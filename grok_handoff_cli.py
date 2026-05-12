@@ -46,6 +46,9 @@ def run_command(cmd: Iterable[str]) -> int:
     cmd_list = list(cmd)
     print("[RUN]", " ".join(f'"{x}"' if " " in x else x for x in cmd_list))
     completed = subprocess.run(cmd_list, cwd=str(ROOT))
+    if completed.returncode != 0:
+        print("\n[Hint / 提示] If you see HTTPConnectionPool / Connection refused / Max retries exceeded / WinError 10061 / 127.0.0.1:1234, LM Studio may not be running or no model is loaded.")
+        print("[Hint / 提示] 如果看到上述连接错误，通常是 LM Studio 未启动、未开启本地 server、或模型未加载。")
     return completed.returncode
 
 

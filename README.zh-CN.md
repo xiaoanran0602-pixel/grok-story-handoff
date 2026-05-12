@@ -346,3 +346,13 @@ A: 本工具只处理用户本地文件。请使用本地合法可用的模型�
 ## License
 
 MIT License. 见 [LICENSE](LICENSE)。
+
+
+## 全自动发布
+以后不需要本地打包。流程是：
+1. Codex 修改代码并开 PR。
+2. 合并 PR 到 main。
+3. 打开 GitHub → Actions → Release Windows。
+4. 点击 Run workflow。
+5. 输入版本号，例如 v0.1.1。
+6. Actions 会自动打包 Windows exe、生成 zip、创建 Release、上传资产。
