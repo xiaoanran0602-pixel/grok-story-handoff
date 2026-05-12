@@ -198,3 +198,32 @@ Use:
 This tool only processes local user files. If your project contains NSFW, adult, or sensitive fictional material, use a locally available model that can legally process your content. Cloud APIs may refuse, filter, or rewrite adult material.
 
 Users are responsible for local laws, platform policies, and consent/safety boundaries.
+
+## 13. Garbled GUI Logs (Chinese/Japanese)
+
+The GUI now forces UTF-8 for Python subprocess output and log decoding. If mojibake still appears:
+
+- Restart GUI and LM Studio.
+- Check Windows locale/encoding settings.
+- Optionally enable Windows UTF-8 compatibility (Beta).
+
+Most users should not need extra changes.
+
+## 14. Stopping Long Tasks
+
+- Use **Stop Current Task** while a task is running.
+- GUI first tries graceful terminate, then force-kills if needed.
+- After stopping, status becomes "Stopped" and it is treated as user stop (not task failure).
+- True Pause/Resume is not implemented yet; rerun after stop.
+
+## LM Studio Connection Refused / WinError 10061
+
+If you see `WinError 10061`, `Connection refused`, `Max retries exceeded`, or `HTTPConnectionPool(host='127.0.0.1', port=1234)`, GUI/CLI cannot reach LM Studio.
+
+- Open LM Studio.
+- Start Local Server.
+- Confirm Base URL: `http://127.0.0.1:1234/v1`.
+- Use **Test LM Studio Connection** in GUI.
+- Check firewall rules if needed.
+
+If you close the GUI during a task, it will stop subprocess tree first. If there are leftovers, end `python.exe` / `GrokStoryHandoff.exe` in Task Manager.

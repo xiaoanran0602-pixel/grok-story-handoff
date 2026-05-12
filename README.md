@@ -12,6 +12,8 @@ It keeps the existing core scripts intact:
 
 No GitHub upload, cloud sync, or remote storage is required.
 
+> Privacy note: do **not** commit or upload private `.mhtml` windows, generated `runs/`, `master/`, `handoff/`, `debug/`, or canon files to a public repository.
+
 ## Project Overview
 
 This project is designed for long-form fiction workflows where one Grok window eventually fills up. Instead of pasting a huge conversation into the next window, you can:
@@ -82,6 +84,13 @@ The GUI tries to select the language from your system locale:
 You can also switch language manually from the top-right dropdown. The selection is saved to `grok_config.json`.
 
 The GUI text is translated, but model output, logs, and subprocess command output are kept exactly as they are.
+
+### Stop button and encoding
+
+- GUI now provides **Stop Current Task** for long runs.
+- GUI subprocess execution enforces UTF-8 (`-X utf8`, `PYTHONUTF8=1`, `PYTHONIOENCODING=utf-8`) to reduce mojibake in Chinese/Japanese logs.
+- If your Windows environment still shows garbled text, check system/app locale and UTF-8 settings; most users should not need extra changes.
+- Pause/Resume is **not** implemented yet. For now, stop and rerun. v3.5 already writes intermediate cache files, which can reduce rerun cost.
 
 See [docs/I18N_en.md](docs/I18N_en.md) for implementation notes.
 
@@ -333,3 +342,10 @@ This tool only processes local user files. If your project contains NSFW, adult,
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+## LM Studio Connection & Safe Stop
+
+If you see `WinError 10061`, `Connection refused`, or `HTTPConnectionPool 127.0.0.1:1234`, the GUI cannot connect to LM Studio.
+Open LM Studio → start Local Server → confirm Base URL is `http://127.0.0.1:1234/v1` → click **Test LM Studio Connection**.
+
+If you close the GUI while a task is running, the app now asks for confirmation and tries to stop the whole subprocess tree. If LM Studio is still generating after close, end remaining `python.exe` / `GrokStoryHandoff.exe` in Task Manager.

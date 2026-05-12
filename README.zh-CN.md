@@ -12,6 +12,8 @@ Grok Story Handoff 是一个本地 Python 工具，用来把 Grok 保存的 `.mh
 
 本工具不需要上传 GitHub、不需要云同步，也不会主动把你的故事数据发到远端。
 
+> 隐私提醒：请不要把私人 `.mhtml` 对话、`runs/`、`master/`、`handoff/`、`debug/` 以及正文产物提交到公开仓库。
+
 ## 项目简介
 
 这个项目适合长篇小说创作：一个 Grok 窗口写满后，不要把整段超长对话硬塞进下一个窗口，而是：
@@ -82,6 +84,13 @@ GUI 会尝试根据系统语言自动切换：
 也可以在右上角手动切换语言。手动选择会保存到 `grok_config.json`。
 
 GUI 界面文案会翻译，但模型输出、日志和命令行输出会保留原文，不会强行翻译。
+
+### 停止按钮与日志编码
+
+- GUI 现已支持**停止当前任务**（适合长任务中途取消）。
+- GUI 子进程已强制 UTF-8（`-X utf8`、`PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8`），用于降低中文/日文日志乱码概率。
+- 若 Windows 仍偶发乱码，可检查系统区域/UTF-8 设置；普通用户一般不需要额外操作。
+- 当前**不支持真正暂停/恢复**。现阶段建议停止后重跑；v3.5 会落盘部分中间缓存，可降低重跑成本。
 
 实现说明见 [docs/I18N_zh.md](docs/I18N_zh.md)。
 
@@ -337,3 +346,10 @@ A: 本工具只处理用户本地文件。请使用本地合法可用的模型�
 ## License
 
 MIT License. 见 [LICENSE](LICENSE)。
+
+## LM Studio 连接与安全停止
+
+如果看到 `WinError 10061`、`Connection refused`、`HTTPConnectionPool 127.0.0.1:1234`，说明 GUI 无法连接 LM Studio。
+请打开 LM Studio → 启动 Local Server → 确认 Base URL 为 `http://127.0.0.1:1234/v1` → 点击**测试 LM Studio 连接**。
+
+关闭 GUI 时如果任务仍在运行，新版会先弹确认并尽量停止整个子进程树。若关闭后 LM Studio 仍在生成，请在任务管理器结束残留 `python.exe` / `GrokStoryHandoff.exe`。

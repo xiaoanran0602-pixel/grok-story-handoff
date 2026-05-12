@@ -45,7 +45,22 @@ def extend_if_value(cmd: List[str], flag: str, value: Optional[Union[str, int]])
 def run_command(cmd: Iterable[str]) -> int:
     cmd_list = list(cmd)
     print("[RUN]", " ".join(f'"{x}"' if " " in x else x for x in cmd_list))
-    completed = subprocess.run(cmd_list, cwd=str(ROOT))
+    completed = subprocess.run(cmd_list, cwd=str(ROOT), text=True, capture_output=True)
+    if completed.stdout:
+        print(completed.stdout, end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    merged = f"{completed.stdout}\n{completed.stderr}"
+    lmstudio_markers = (
+        "HTTPConnectionPool",
+        "Connection refused",
+        "Max retries exceeded",
+        "WinError 10061",
+        "127.0.0.1:1234",
+    )
+    if completed.returncode != 0 and any(marker in merged for marker in lmstudio_markers):
+        print("Cannot connect to LM Studio. Please start LM Studio Local Server and check Base URL.", file=sys.stderr)
+        print("无法连接 LM Studio，请启动 LM Studio 本地服务器，并检查 Base URL。", file=sys.stderr)
     return completed.returncode
 
 

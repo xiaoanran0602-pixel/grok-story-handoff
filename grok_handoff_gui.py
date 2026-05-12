@@ -16,11 +16,13 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from tkinter import END, filedialog, messagebox, ttk
 import tkinter as tk
 from typing import Any, Dict, List, Optional
 
+import requests
 from grok_i18n import detect_system_language, get_supported_languages, normalize_language_code, t
 
 
@@ -69,9 +71,9 @@ def script_command(script_key: str) -> List[str]:
     if is_frozen_app():
         return [sys.executable, "--run-script", script_key]
     if script_key == "v6":
-        return [sys.executable, str(V6_SCRIPT)]
+        return [sys.executable, "-X", "utf8", str(V6_SCRIPT)]
     if script_key == "manager":
-        return [sys.executable, str(HANDOFF_SCRIPT)]
+        return [sys.executable, "-X", "utf8", str(HANDOFF_SCRIPT)]
     raise ValueError(f"Unknown script key: {script_key}")
 
 
@@ -93,8 +95,8 @@ def run_internal_script(script_key: str, argv: List[str]) -> int:
 class GrokHandoffGUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.geometry("1000x720")
-        self.minsize(900, 620)
+        self.geometry("1020x760")
+        self.minsize(920, 660)
 
         self.config_data = load_config()
         self.lang = normalize_language_code(self.config_data.get("language") or detect_system_language())
@@ -104,6 +106,7 @@ class GrokHandoffGUI(tk.Tk):
         self.output_queue: queue.Queue = queue.Queue()
         self.worker: Optional[threading.Thread] = None
         self.current_process: Optional[subprocess.Popen] = None
+        self.stop_requested = False
 
         self.mhtml_var = tk.StringVar()
         self.project_dir_var = tk.StringVar(value=str(ROOT / "Grok_Project"))
@@ -119,6 +122,7 @@ class GrokHandoffGUI(tk.Tk):
         self._build_ui()
         self._refresh_run_dir()
         self.update_texts()
+        self.protocol("WM_DELETE_WINDOW", self.on_close_window)
         self.after(100, self._drain_output_queue)
 
     def _build_ui(self) -> None:
@@ -126,14 +130,14 @@ class GrokHandoffGUI(tk.Tk):
         outer.pack(fill="both", expand=True)
 
         header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 10))
+        header.pack(fill="x", pady=(0, 14))
         header.columnconfigure(0, weight=1)
 
         self.title_label = ttk.Label(header, font=("TkDefaultFont", 16, "bold"))
         self.title_label.grid(row=0, column=0, sticky="ew")
 
         self.intro_label = ttk.Label(header, justify="left", wraplength=760)
-        self.intro_label.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        self.intro_label.grid(row=1, column=0, sticky="ew", pady=(10, 0))
 
         language_box = ttk.Frame(header)
         language_box.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(16, 0))
@@ -177,12 +181,16 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button = ttk.Button(buttons, command=self.generate_handoff)
         self.open_handoff_button = ttk.Button(buttons, command=self.open_handoff_folder)
         self.open_output_button = ttk.Button(buttons, command=self.open_output_dir)
+        self.test_connection_button = ttk.Button(buttons, command=self.test_lmstudio_connection)
+        self.stop_button = ttk.Button(buttons, command=self.stop_current_task, state="disabled")
 
         self.clean_button.pack(side="left", padx=(0, 8), pady=4)
         self.absorb_button.pack(side="left", padx=(0, 8), pady=4)
         self.handoff_button.pack(side="left", padx=(0, 8), pady=4)
         self.open_handoff_button.pack(side="left", padx=(0, 8), pady=4)
         self.open_output_button.pack(side="left", padx=(0, 8), pady=4)
+        self.test_connection_button.pack(side="left", padx=(0, 8), pady=4)
+        self.stop_button.pack(side="left", padx=(0, 8), pady=4)
 
         self.progress_frame = ttk.LabelFrame(outer)
         self.progress_frame.pack(fill="x", pady=(0, 10))
@@ -198,7 +206,7 @@ class GrokHandoffGUI(tk.Tk):
         self.log_frame.rowconfigure(0, weight=1)
         self.log_frame.columnconfigure(0, weight=1)
 
-        self.log_text = tk.Text(self.log_frame, wrap="word", height=20)
+        self.log_text = tk.Text(self.log_frame, wrap="word", height=24)
         scrollbar = ttk.Scrollbar(self.log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.grid(row=0, column=0, sticky="nsew")
@@ -263,6 +271,8 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button.configure(text=t("generate_handoff", self.lang))
         self.open_handoff_button.configure(text=t("open_handoff_folder", self.lang))
         self.open_output_button.configure(text=t("open_output_folder", self.lang))
+        self.test_connection_button.configure(text=t("test_lmstudio_connection", self.lang))
+        self.stop_button.configure(text=t("stop_current_task", self.lang))
         self.log_frame.configure(text=t("log", self.lang))
 
         self.status_var.set(t(self.status_key, self.lang))
@@ -275,12 +285,15 @@ class GrokHandoffGUI(tk.Tk):
         self.update_texts()
 
     def choose_mhtml(self) -> None:
-        path = filedialog.askopenfilename(
-            title=t("choose_mhtml_title", self.lang),
-            filetypes=[("MHTML files", "*.mhtml *.mht *.mhtm"), ("All files", "*.*")],
-        )
-        if path:
-            self.mhtml_var.set(path)
+        try:
+            path = filedialog.askopenfilename(
+                title=t("choose_mhtml_title", self.lang),
+                filetypes=[("MHTML files", "*.mhtml *.mht *.mhtm"), ("All files", "*.*")],
+            )
+            if path:
+                self.mhtml_var.set(path)
+        except Exception as exc:
+            self._show_error_from_ui_thread(exc, t("task_failed", self.lang))
 
     def choose_project_dir(self) -> None:
         path = filedialog.askdirectory(title=t("choose_project_title", self.lang))
@@ -409,6 +422,7 @@ class GrokHandoffGUI(tk.Tk):
 
         self.status_key = status_key
         self.current_task_status_key = status_key
+        self.stop_requested = False
         self.status_var.set(t(self.status_key, self.lang))
         self._set_buttons_enabled(False)
         self.progressbar.start(12)
@@ -419,8 +433,41 @@ class GrokHandoffGUI(tk.Tk):
         self.worker = threading.Thread(target=self._worker_run, args=(cmd,), daemon=True)
         self.worker.start()
 
+    @staticmethod
+    def normalize_base_url(url: str) -> str:
+        candidate = (url or "").strip().rstrip("/")
+        if not candidate:
+            return DEFAULT_BASE_URL
+        if candidate.lower().endswith("/v1"):
+            return candidate
+        return candidate + "/v1"
+
+    @staticmethod
+    def make_models_url(base_url: str) -> str:
+        normalized = GrokHandoffGUI.normalize_base_url(base_url)
+        return normalized.rstrip("/") + "/models"
+
+    def test_lmstudio_connection(self) -> None:
+        try:
+            base_url = self.normalize_base_url(self.base_url_var.get())
+            models_url = self.make_models_url(base_url)
+            self.log_text.insert(END, f"\n[LM Studio] GET {models_url}\n")
+            self.log_text.see(END)
+            response = requests.get(models_url, timeout=5)
+            response.raise_for_status()
+            self.log_text.insert(END, t("lm_studio_connection_ok", self.lang) + "\n")
+            self.log_text.see(END)
+            messagebox.showinfo(t("lm_studio_connection_title", self.lang), t("lm_studio_connection_ok", self.lang))
+        except Exception as exc:
+            self.log_text.insert(END, f"{t('lm_studio_connection_failed', self.lang)} {exc}\n")
+            self.log_text.see(END)
+            messagebox.showerror(t("lm_studio_connection_title", self.lang), t("lm_studio_connection_help", self.lang))
+
     def _worker_run(self, cmd: List[str]) -> None:
         try:
+            child_env = os.environ.copy()
+            child_env["PYTHONUTF8"] = "1"
+            child_env["PYTHONIOENCODING"] = "utf-8"
             self.current_process = subprocess.Popen(
                 cmd,
                 cwd=str(ROOT),
@@ -430,6 +477,7 @@ class GrokHandoffGUI(tk.Tk):
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
+                env=child_env,
             )
             assert self.current_process.stdout is not None
             for line in self.current_process.stdout:
@@ -439,6 +487,7 @@ class GrokHandoffGUI(tk.Tk):
             self.output_queue.put(("DONE", code))
         except Exception as exc:
             self.output_queue.put(f"\n[GUI error] {exc}\n")
+            self.output_queue.put(("THREAD_EXCEPTION", str(exc)))
             self.output_queue.put(("DONE", 1))
         finally:
             self.current_process = None
@@ -458,7 +507,13 @@ class GrokHandoffGUI(tk.Tk):
                     self.progressbar.stop()
                 elif event == "DONE":
                     self.progressbar.stop()
-                    if value == 0:
+                    if self.stop_requested:
+                        self.status_key = "status_stopped"
+                        self.status_var.set(t(self.status_key, self.lang))
+                        self.log_text.insert(END, t("task_stopped", self.lang) + "\n")
+                        self.log_text.see(END)
+                        messagebox.showinfo(t("task_stopped_title", self.lang), t("task_stopped", self.lang))
+                    elif value == 0:
                         self.status_key = "status_completed"
                         self.status_var.set(t(self.status_key, self.lang))
                         success_message = self._success_message_for_current_task()
@@ -471,6 +526,8 @@ class GrokHandoffGUI(tk.Tk):
                         self.log_text.insert(END, t("lm_studio_hint", self.lang) + "\n")
                         self.log_text.see(END)
                         messagebox.showerror(t("task_failed_title", self.lang), t("task_failed", self.lang))
+                elif event == "THREAD_EXCEPTION":
+                    self._show_error_from_ui_thread(Exception(value), t("task_failed", self.lang))
                 continue
 
             self.log_text.insert(END, item)
@@ -485,8 +542,62 @@ class GrokHandoffGUI(tk.Tk):
             self.handoff_button,
             self.open_handoff_button,
             self.open_output_button,
+            self.test_connection_button,
         ):
             button.configure(state=state)
+        self.stop_button.configure(state="disabled" if enabled else "normal")
+
+    def stop_current_task(self) -> None:
+        if not self.current_process or self.current_process.poll() is not None or self.stop_requested:
+            return
+        self.stop_requested = True
+        self.status_key = "status_stopping"
+        self.status_var.set(t(self.status_key, self.lang))
+        self.log_text.insert(END, t("stop_requested", self.lang) + "\n")
+        self.log_text.insert(END, t("stopping_process_tree", self.lang) + "\n")
+        self.log_text.see(END)
+        threading.Thread(target=self._stop_worker_process, daemon=True).start()
+
+    def _stop_worker_process(self) -> None:
+        proc = self.current_process
+        if proc is None:
+            return
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, text=True)
+            proc.terminate()
+            deadline = time.time() + 3
+            while time.time() < deadline:
+                if proc.poll() is not None:
+                    return
+                time.sleep(0.1)
+            proc.kill()
+        except Exception as exc:
+            self.output_queue.put(f"\n[GUI stop error] {exc}\n")
+
+    def on_close_window(self) -> None:
+        try:
+            if self.current_process and self.current_process.poll() is None:
+                should_close = messagebox.askyesno(
+                    t("confirm_close_title", self.lang),
+                    t("confirm_close_running_task", self.lang),
+                )
+                if not should_close:
+                    return
+                self.stop_current_task()
+            self.destroy()
+        except Exception as exc:
+            self._show_error_from_ui_thread(exc, t("task_failed", self.lang))
+
+    def _show_error_from_ui_thread(self, exc: Exception, friendly_message: str) -> None:
+        self.status_key = "status_failed"
+        self.status_var.set(t(self.status_key, self.lang))
+        self.progressbar.stop()
+        self._set_buttons_enabled(True)
+        self.current_process = None
+        self.log_text.insert(END, f"\n[GUI error] {exc}\n")
+        self.log_text.insert(END, friendly_message + "\n")
+        self.log_text.see(END)
 
     def _success_message_for_current_task(self) -> str:
         handoff_file = Path(self.project_dir_var.get().strip()) / "handoff" / "03_下个窗口直接复制这个.md"
