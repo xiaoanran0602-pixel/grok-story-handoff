@@ -109,3 +109,6 @@ GrokStoryHandoff-windows-v0.1.0.zip
 4. 点击 Run workflow。
 5. 输入版本号，例如 v0.1.1。
 6. Actions 会自动打包 Windows exe、生成 zip、创建 Release、上传资产。
+
+## Windows Actions UTF-8
+Windows GitHub Actions 可能需要 UTF-8 模式，因为 CLI help 包含中文/日文文本。若出现 UnicodeEncodeError / cp1252，workflow 应设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`。

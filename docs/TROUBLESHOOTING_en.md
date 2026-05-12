@@ -215,3 +215,6 @@ Most users should not need extra changes.
 - GUI first tries graceful terminate, then force-kills if needed.
 - After stopping, status becomes "Stopped" and it is treated as user stop (not task failure).
 - True Pause/Resume is not implemented yet; rerun after stop.
+
+## Windows Actions UTF-8
+Windows GitHub Actions may need UTF-8 mode because CLI help contains Chinese/Japanese text. If UnicodeEncodeError / cp1252 appears, workflow should set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`.
