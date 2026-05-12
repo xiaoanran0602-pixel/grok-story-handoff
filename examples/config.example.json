@@ -1,0 +1,7 @@
+{
+  "project_dir": "D:\\Grok_Project",
+  "base_url": "http://127.0.0.1:1234/v1",
+  "model": "456@iq3_m",
+  "canon_part_chars": 12000,
+  "recent_chars": 9000
+}

@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+
+# GUI uses Python's built-in tkinter.
+# Optional developer packaging tool:
+# pyinstaller
