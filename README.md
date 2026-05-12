@@ -120,23 +120,23 @@ The script runs:
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
 Recommended output:
 
 ```text
-dist\GrokStoryHandoff\GrokStoryHandoff.exe
+dist\GrokStoryHandoff.exe
 ```
 
-The recommended release package is a zip of the whole `dist\GrokStoryHandoff` folder. `--onedir` is preferred because `--onefile` extracts on every launch, starts slower, and can make path debugging harder.
+Default build now uses `--onefile` so the release has a single `GrokStoryHandoff.exe` and no sibling `_internal` folder in `dist` packaging. Use `-OneDir` only if you need easier path debugging.
 
 The GUI exe uses an internal subprocess handoff (`--run-script v6/manager`) so the packaged app can still run the original core modules without requiring users to install Python.
 
-Optional single-file build:
+Optional onedir build:
 
 ```powershell
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
 ## GitHub Release

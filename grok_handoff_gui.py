@@ -240,7 +240,15 @@ class GrokHandoffGUI(tk.Tk):
         text=(base_url or DEFAULT_BASE_URL).strip().rstrip('/'); return text if text.endswith('/v1') else text+'/v1'
     def _append_model_arg(self, cmd:List[str]):
         if self.model_var.get().strip(): cmd.extend(["--model",self.model_var.get().strip()])
-    def test_lm_studio_connection(self): pass
+    def test_lm_studio_connection(self):
+        cmd=[
+            *script_command("manager"),
+            "--test-lm",
+            "--base-url",
+            self._normalize_base_url(self.base_url_var.get()),
+        ]
+        self._append_model_arg(cmd)
+        self.run_subprocess(cmd,"status_idle")
 
     def update_texts(self):
         self.title(t("app_title",self.lang)); self.title_label.configure(text=t("main_title",self.lang)); self.language_label.configure(text=t("language",self.lang)); self.intro_label.configure(text=t("intro_wizard",self.lang))

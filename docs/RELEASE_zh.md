@@ -29,15 +29,15 @@ powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
-默认使用 `--onedir`，不默认使用 `--onefile`。`--onefile` 每次启动会解包，启动更慢，也更难排查路径问题。
+现在默认使用 `--onefile`，产物是单个 exe，发布包里不会再出现并列的 `_internal` 文件夹。仅在需要更易排查路径问题时再用 `-OneDir`。
 
-可选单文件命令：
+可选 onedir 命令：
 
 ```powershell
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
 ## 3. 检查 dist

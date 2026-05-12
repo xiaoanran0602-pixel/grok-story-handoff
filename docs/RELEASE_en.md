@@ -29,15 +29,15 @@ The script runs:
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
-The default is `--onedir`, not `--onefile`. `--onefile` extracts on every launch, starts slower, and can make path debugging harder.
+Default build now uses `--onefile` so the release artifact is a single exe without a `_internal` folder next to it. Use `-OneDir` only when you need easier debugging.
 
-Optional single-file build:
+Optional onedir build:
 
 ```powershell
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
 ## 3. Check dist
