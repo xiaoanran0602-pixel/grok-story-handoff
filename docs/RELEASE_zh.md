@@ -99,3 +99,17 @@ GrokStoryHandoff-windows-v0.1.0.zip
 - `grok_config.json`
 
 `.gitignore` 已排除这些内容，但发布前仍要人工检查 zip 和仓库文件。
+
+
+## 全自动发布
+以后不需要本地打包。流程是：
+1. Codex 修改代码并开 PR。
+2. 合并 PR 到 main。
+3. 打开 GitHub → Actions → Release Windows。
+4. 点击 Run workflow。
+5. 输入版本号，例如 v0.1.1。
+6. Actions 会自动打包 Windows exe、生成 zip、创建 Release、上传资产。
+
+
+## Windows Runner UTF-8 说明
+如果 Windows GitHub Actions 或本地终端出现 UnicodeEncodeError / cp1252，说明控制台编码不是 UTF-8。项目已在 workflow 中设置 PYTHONUTF8=1、PYTHONIOENCODING=utf-8，并在 CLI 启动时尝试 reconfigure stdout/stderr。

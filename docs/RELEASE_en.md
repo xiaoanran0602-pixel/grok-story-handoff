@@ -99,3 +99,17 @@ Before publishing, make sure you did not upload:
 - `grok_config.json`
 
 These are ignored by `.gitignore`, but always inspect the zip and repository before publishing.
+
+
+## Fully automated release
+No local packaging is required:
+1. Codex opens a PR.
+2. Merge PR into main.
+3. Open GitHub → Actions → Release Windows.
+4. Click Run workflow.
+5. Enter a version, for example v0.1.1.
+6. GitHub Actions builds the Windows executable, zips it, creates a Release, and uploads the asset.
+
+
+## UTF-8 note for Windows runners
+If Windows GitHub Actions or a local terminal shows UnicodeEncodeError / cp1252, the console is not using UTF-8. The workflow sets PYTHONUTF8=1 and PYTHONIOENCODING=utf-8, and the CLI reconfigures stdout/stderr at startup.

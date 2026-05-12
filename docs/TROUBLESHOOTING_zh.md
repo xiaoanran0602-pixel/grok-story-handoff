@@ -215,3 +215,7 @@ python grok_handoff_cli.py clean --input "D:\My Stories\story window.mhtml" --ou
 - GUI 会先发送终止请求，若几秒内未退出会强制结束。
 - 停止后状态为“已停止”，不会弹“任务失败”。
 - 目前不支持真正暂停/恢复；请在停止后重新运行。
+
+
+## Windows 控制台 UTF-8 编码
+如果 Windows GitHub Actions 或本地终端出现 UnicodeEncodeError / cp1252，说明控制台编码不是 UTF-8。项目已在 workflow 中设置 PYTHONUTF8=1、PYTHONIOENCODING=utf-8，并在 CLI 启动时尝试 reconfigure stdout/stderr。

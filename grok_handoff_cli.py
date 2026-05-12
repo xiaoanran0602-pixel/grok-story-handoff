@@ -24,6 +24,16 @@ DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
 DEFAULT_CANON_PART_CHARS = 12000
 
 
+
+
+def configure_utf8_stdio() -> None:
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 def add_common_lm_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--base-url",
@@ -46,6 +56,9 @@ def run_command(cmd: Iterable[str]) -> int:
     cmd_list = list(cmd)
     print("[RUN]", " ".join(f'"{x}"' if " " in x else x for x in cmd_list))
     completed = subprocess.run(cmd_list, cwd=str(ROOT))
+    if completed.returncode != 0:
+        print("\n[Hint / 提示] If you see HTTPConnectionPool / Connection refused / Max retries exceeded / WinError 10061 / 127.0.0.1:1234, LM Studio may not be running or no model is loaded.")
+        print("[Hint / 提示] 如果看到上述连接错误，通常是 LM Studio 未启动、未开启本地 server、或模型未加载。")
     return completed.returncode
 
 
@@ -166,6 +179,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    configure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

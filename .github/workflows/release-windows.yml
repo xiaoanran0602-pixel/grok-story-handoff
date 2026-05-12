@@ -1,0 +1,93 @@
+name: Release Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (for example v0.1.1)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYTHONLEGACYWINDOWSSTDIO: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Ensure release does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.version.outputs.version }} already exists. Please use a new version tag." >&2
+            exit 1
+          fi
+      - name: Configure UTF-8 console
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+          chcp 65001
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+          chcp 65001
+          python -X utf8 -m pip install --upgrade pip
+          python -X utf8 -m pip install -r requirements.txt
+          python -X utf8 -m pip install pyinstaller
+      - name: Validate scripts
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+          chcp 65001
+          python -X utf8 -m py_compile grok_handoff_gui.py grok_handoff_cli.py grok_i18n.py
+          python -X utf8 grok_handoff_cli.py --help
+      - name: Build Windows GUI
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+          chcp 65001
+          python -X utf8 -m PyInstaller --onedir --windowed --name GrokStoryHandoff grok_handoff_gui.py
+      - name: Package artifact
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP_NAME="GrokStoryHandoff-windows-${VERSION}.zip"
+          powershell -NoProfile -Command "Compress-Archive -Path 'dist/GrokStoryHandoff/*' -DestinationPath $ZIP_NAME -Force"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+        id: package
+      - name: Create release and upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          body: AI-assisted local tool for cleaning long Grok conversations and generating story handoff packs.
+          files: ${{ steps.package.outputs.zip_name }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
