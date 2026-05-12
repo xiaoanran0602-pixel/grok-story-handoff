@@ -1,18 +1,17 @@
 # Grok Story Handoff
 
+An AI-assisted local tool for cleaning long Grok `.mhtml` conversations into story canon, story bible, and handoff packs for the next chat window.
+
+这是一个基于 AI 的 Grok 长对话清洗与续写交接工具。
+
+Input: Grok conversation saved as `.mhtml`  
+Output: cleaned story canon + story bible + next-window handoff pack
+
+Download Windows Release: https://github.com/xiaoanran0602-pixel/grok-story-handoff/releases
+
+中文说明： [README.zh-CN.md](README.zh-CN.md)
+
 **English README.** 中文说明请看 [README.zh-CN.md](README.zh-CN.md).
-
-Grok Story Handoff is a local Python helper for turning Grok-saved `.mhtml` conversation windows into clean story canon, then building a handoff package that can be pasted into the next Grok window.
-
-It keeps the existing core scripts intact:
-
-- `grok_mhtml_bible_pipeline_v6.py` extracts and cleans one Grok `.mhtml` window.
-- `grok_story_handoff_manager_v3_5_checkpoint_bible.py` absorbs a finished run into a long-term project and generates handoff files.
-- `grok_handoff_gui.py` and `grok_handoff_cli.py` are thin wrappers that call the existing scripts with `subprocess`.
-
-No GitHub upload, cloud sync, or remote storage is required.
-
-> Privacy note: do **not** commit or upload private `.mhtml` windows, generated `runs/`, `master/`, `handoff/`, `debug/`, or canon files to a public repository.
 
 ## Project Overview
 
@@ -25,6 +24,14 @@ This project is designed for long-form fiction workflows where one Grok window e
 5. Paste the handoff into the next Grok window.
 
 Intermediate files are written to disk on purpose. Long-running local model tasks should not keep all intermediate results only in memory. v3.5 writes chunk extraction, section merges, and draft bible sections to `debug/init_bible_cache_v3_5/` and `debug/init_bible_sections_v3_5/`. If something fails, users can inspect or reuse partial outputs instead of starting over.
+
+
+## Who is this for?
+
+- Writers using Grok for long-form fiction, roleplay, character interaction, or worldbuilding.
+- Users whose long Grok chats start forgetting details, mixing storylines, or losing character continuity.
+- People who want to separate actual story text from chat noise, summaries, and meta comments.
+- Anyone who wants a fresh Grok window to continue a story with better memory.
 
 ## Quick Start
 
@@ -352,3 +359,12 @@ No local packaging is required:
 4. Click Run workflow.
 5. Enter a version, for example v0.1.1.
 6. GitHub Actions builds the Windows executable, zips it, creates a Release, and uploads the asset.
+
+
+## Feedback
+
+Issues, logs, bug reports, and feature suggestions are welcome:
+https://github.com/xiaoanran0602-pixel/grok-story-handoff/issues
+
+
+Keywords: Grok, AI writing, long conversation cleanup, story canon, story bible, handoff pack, roleplay, worldbuilding, local AI, LM Studio, MHTML export.
