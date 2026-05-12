@@ -109,3 +109,6 @@ No local packaging is required:
 4. Click Run workflow.
 5. Enter a version, for example v0.1.1.
 6. GitHub Actions builds the Windows executable, zips it, creates a Release, and uploads the asset.
+
+## Windows Actions UTF-8
+Windows GitHub Actions may need UTF-8 mode because CLI help contains Chinese/Japanese text. If UnicodeEncodeError / cp1252 appears, workflow should set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`.

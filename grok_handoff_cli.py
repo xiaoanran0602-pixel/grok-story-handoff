@@ -113,6 +113,19 @@ def command_gui(_args: argparse.Namespace) -> int:
     return run_command(cmd)
 
 
+
+
+def configure_utf8_stdio() -> None:
+    import sys
+
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -169,6 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    configure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))
