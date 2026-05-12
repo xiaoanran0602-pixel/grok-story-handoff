@@ -342,3 +342,13 @@ This tool only processes local user files. If your project contains NSFW, adult,
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+
+## Fully automated release
+No local packaging is required:
+1. Codex opens a PR.
+2. Merge PR into main.
+3. Open GitHub → Actions → Release Windows.
+4. Click Run workflow.
+5. Enter a version, for example v0.1.1.
+6. GitHub Actions builds the Windows executable, zips it, creates a Release, and uploads the asset.

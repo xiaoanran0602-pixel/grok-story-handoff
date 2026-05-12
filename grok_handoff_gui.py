@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+from urllib.parse import urlparse
 from pathlib import Path
 from tkinter import END, filedialog, messagebox, ttk
 import tkinter as tk
@@ -179,6 +180,7 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button = ttk.Button(buttons, command=self.generate_handoff)
         self.open_handoff_button = ttk.Button(buttons, command=self.open_handoff_folder)
         self.open_output_button = ttk.Button(buttons, command=self.open_output_dir)
+        self.test_connection_button = ttk.Button(buttons, command=self.test_lm_studio_connection)
         self.stop_button = ttk.Button(buttons, command=self.stop_current_task, state="disabled")
 
         self.clean_button.pack(side="left", padx=(0, 8), pady=4)
@@ -186,6 +188,7 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button.pack(side="left", padx=(0, 8), pady=4)
         self.open_handoff_button.pack(side="left", padx=(0, 8), pady=4)
         self.open_output_button.pack(side="left", padx=(0, 8), pady=4)
+        self.test_connection_button.pack(side="left", padx=(0, 8), pady=4)
         self.stop_button.pack(side="left", padx=(0, 8), pady=4)
 
         self.progress_frame = ttk.LabelFrame(outer)
@@ -267,6 +270,7 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button.configure(text=t("generate_handoff", self.lang))
         self.open_handoff_button.configure(text=t("open_handoff_folder", self.lang))
         self.open_output_button.configure(text=t("open_output_folder", self.lang))
+        self.test_connection_button.configure(text=t("test_lm_studio_connection", self.lang))
         self.stop_button.configure(text=t("stop_current_task", self.lang))
         self.log_frame.configure(text=t("log", self.lang))
 
@@ -320,7 +324,7 @@ class GrokHandoffGUI(tk.Tk):
             "--output",
             run_dir,
             "--base-url",
-            self.base_url_var.get().strip() or DEFAULT_BASE_URL,
+            self._normalize_base_url(self.base_url_var.get().strip() or DEFAULT_BASE_URL),
             "--canon-part-chars",
             str(canon_part_chars),
         ]
@@ -340,7 +344,7 @@ class GrokHandoffGUI(tk.Tk):
             "--project-dir",
             str(project_dir),
             "--base-url",
-            self.base_url_var.get().strip() or DEFAULT_BASE_URL,
+            self._normalize_base_url(self.base_url_var.get().strip() or DEFAULT_BASE_URL),
             "--absorb",
         ]
         self._append_model_arg(cmd)
@@ -378,6 +382,31 @@ class GrokHandoffGUI(tk.Tk):
                 return
         messagebox.showwarning(t("output_missing_title", self.lang), t("output_missing", self.lang))
 
+
+
+    def _normalize_base_url(self, base_url: str) -> str:
+        text = (base_url or DEFAULT_BASE_URL).strip().rstrip('/')
+        if text.endswith('/v1'):
+            return text
+        return text + '/v1'
+
+    def _models_url(self, base_url: str) -> str:
+        return self._normalize_base_url(base_url).rstrip('/') + '/models'
+
+    def test_lm_studio_connection(self) -> None:
+        try:
+            import urllib.request
+            url = self._models_url(self.base_url_var.get().strip() or DEFAULT_BASE_URL)
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                if resp.status >= 400:
+                    raise RuntimeError(f'HTTP {resp.status}')
+            messagebox.showinfo(t('task_completed_title', self.lang), t('lm_test_ok', self.lang) + f"\n{url}")
+            self.log_text.insert(END, f"[LM Studio] {t('lm_test_ok', self.lang)}: {url}\n")
+        except Exception as exc:
+            messagebox.showwarning(t('task_failed_title', self.lang), t('lm_test_fail', self.lang) + f"\n{exc}")
+            self.log_text.insert(END, f"[LM Studio] {t('lm_test_fail', self.lang)}: {exc}\n")
+            self.log_text.insert(END, t('lm_studio_hint', self.lang) + "\n")
+        self.log_text.see(END)
     def _append_model_arg(self, cmd: List[str]) -> None:
         model = self.model_var.get().strip()
         if model:
@@ -501,6 +530,7 @@ class GrokHandoffGUI(tk.Tk):
             self.handoff_button,
             self.open_handoff_button,
             self.open_output_button,
+            self.test_connection_button,
         ):
             button.configure(state=state)
         self.stop_button.configure(state="disabled" if enabled else "normal")
@@ -521,7 +551,10 @@ class GrokHandoffGUI(tk.Tk):
         if proc is None:
             return
         try:
-            proc.terminate()
+            if sys.platform.startswith("win"):
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], check=False, capture_output=True)
+            else:
+                proc.terminate()
             deadline = time.time() + 3
             while time.time() < deadline:
                 if proc.poll() is not None:
@@ -548,10 +581,19 @@ class GrokHandoffGUI(tk.Tk):
         return t("task_completed", self.lang)
 
 
+
+
+    def on_close(self) -> None:
+        if self.current_process and self.current_process.poll() is None and not self.stop_requested:
+            if not messagebox.askyesno(t('task_running_title', self.lang), t('confirm_stop_on_close', self.lang)):
+                return
+            self.stop_current_task()
+        self.destroy()
 def main() -> None:
     if len(sys.argv) >= 3 and sys.argv[1] == "--run-script":
         raise SystemExit(run_internal_script(sys.argv[2], sys.argv[3:]))
     app = GrokHandoffGUI()
+    app.protocol("WM_DELETE_WINDOW", app.on_close)
     app.mainloop()
 
 
