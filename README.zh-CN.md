@@ -1,18 +1,13 @@
 # Grok Story Handoff
 
+这是一个基于 AI 的 Grok 长对话清洗与续写交接工具。
+
+输入：Grok 保存的 `.mhtml` 对话  
+输出：清洗后的 story canon + story bible + 下个窗口续写 handoff 包
+
+Windows 下载： https://github.com/xiaoanran0602-pixel/grok-story-handoff/releases
+
 中文说明。英文版请看 [README.md](README.md)。
-
-Grok Story Handoff 是一个本地 Python 工具，用来把 Grok 保存的 `.mhtml` 对话窗口清洗成小说正文，并生成可以继续喂给下一个 Grok 窗口的 handoff 包。
-
-当前项目保留原有核心脚本：
-
-- `grok_mhtml_bible_pipeline_v6.py`：负责从单个 Grok `.mhtml` 窗口中抽取、清洗、整理正文。
-- `grok_story_handoff_manager_v3_5_checkpoint_bible.py`：负责把已完成的 run 吸收到长期项目，并生成 handoff。
-- `grok_handoff_gui.py` 和 `grok_handoff_cli.py`：只是入口壳，通过 `subprocess` 调用现有脚本，不重写核心业务逻辑。
-
-本工具不需要上传 GitHub、不需要云同步，也不会主动把你的故事数据发到远端。
-
-> 隐私提醒：请不要把私人 `.mhtml` 对话、`runs/`、`master/`、`handoff/`、`debug/` 以及正文产物提交到公开仓库。
 
 ## 项目简介
 
@@ -25,6 +20,14 @@ Grok Story Handoff 是一个本地 Python 工具，用来把 Grok 保存的 `.mh
 5. 把 handoff 复制给下一个 Grok 窗口继续写。
 
 中间结果落盘很重要：长任务不要只存在内存里。v3.5 应把 chunk 提取、栏目合并、中间草稿写到 `debug/init_bible_cache_v3_5/` 和 `debug/init_bible_sections_v3_5/`。如果中途失败，用户可以从中间文件恢复，不必从头重跑。
+
+
+## 适合谁？
+
+- 用 Grok 写长篇小说、角色互动、世界观故事的人。
+- 经常遇到长对话变笨、串线、忘设定的人。
+- 想把 AI 对话里的正文、废话、总结、设定分离出来的人。
+- 想让新窗口继续接住剧情的人。
 
 ## 快速开始
 
@@ -356,3 +359,12 @@ MIT License. 见 [LICENSE](LICENSE)。
 4. 点击 Run workflow。
 5. 输入版本号，例如 v0.1.1。
 6. Actions 会自动打包 Windows exe、生成 zip、创建 Release、上传资产。
+
+
+## 反馈
+
+欢迎通过 Issues 留言建议、报错日志和功能需求。
+https://github.com/xiaoanran0602-pixel/grok-story-handoff/issues
+
+
+关键词：Grok、AI 写作、长对话清洗、小说正文提取、故事 Bible、角色关系、续写交接包、本地 AI、LM Studio、MHTML 导出。
