@@ -5,6 +5,7 @@ venv/
 build/
 dist/
 *.spec
+*.zip
 *.mhtml
 *.mht
 *.mhtm

@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from tkinter import END, filedialog, messagebox, ttk
 import tkinter as tk
@@ -69,9 +70,9 @@ def script_command(script_key: str) -> List[str]:
     if is_frozen_app():
         return [sys.executable, "--run-script", script_key]
     if script_key == "v6":
-        return [sys.executable, str(V6_SCRIPT)]
+        return [sys.executable, "-X", "utf8", str(V6_SCRIPT)]
     if script_key == "manager":
-        return [sys.executable, str(HANDOFF_SCRIPT)]
+        return [sys.executable, "-X", "utf8", str(HANDOFF_SCRIPT)]
     raise ValueError(f"Unknown script key: {script_key}")
 
 
@@ -93,8 +94,8 @@ def run_internal_script(script_key: str, argv: List[str]) -> int:
 class GrokHandoffGUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.geometry("1000x720")
-        self.minsize(900, 620)
+        self.geometry("1020x760")
+        self.minsize(920, 660)
 
         self.config_data = load_config()
         self.lang = normalize_language_code(self.config_data.get("language") or detect_system_language())
@@ -104,6 +105,7 @@ class GrokHandoffGUI(tk.Tk):
         self.output_queue: queue.Queue = queue.Queue()
         self.worker: Optional[threading.Thread] = None
         self.current_process: Optional[subprocess.Popen] = None
+        self.stop_requested = False
 
         self.mhtml_var = tk.StringVar()
         self.project_dir_var = tk.StringVar(value=str(ROOT / "Grok_Project"))
@@ -126,14 +128,14 @@ class GrokHandoffGUI(tk.Tk):
         outer.pack(fill="both", expand=True)
 
         header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 10))
+        header.pack(fill="x", pady=(0, 14))
         header.columnconfigure(0, weight=1)
 
         self.title_label = ttk.Label(header, font=("TkDefaultFont", 16, "bold"))
         self.title_label.grid(row=0, column=0, sticky="ew")
 
         self.intro_label = ttk.Label(header, justify="left", wraplength=760)
-        self.intro_label.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        self.intro_label.grid(row=1, column=0, sticky="ew", pady=(10, 0))
 
         language_box = ttk.Frame(header)
         language_box.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(16, 0))
@@ -177,12 +179,14 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button = ttk.Button(buttons, command=self.generate_handoff)
         self.open_handoff_button = ttk.Button(buttons, command=self.open_handoff_folder)
         self.open_output_button = ttk.Button(buttons, command=self.open_output_dir)
+        self.stop_button = ttk.Button(buttons, command=self.stop_current_task, state="disabled")
 
         self.clean_button.pack(side="left", padx=(0, 8), pady=4)
         self.absorb_button.pack(side="left", padx=(0, 8), pady=4)
         self.handoff_button.pack(side="left", padx=(0, 8), pady=4)
         self.open_handoff_button.pack(side="left", padx=(0, 8), pady=4)
         self.open_output_button.pack(side="left", padx=(0, 8), pady=4)
+        self.stop_button.pack(side="left", padx=(0, 8), pady=4)
 
         self.progress_frame = ttk.LabelFrame(outer)
         self.progress_frame.pack(fill="x", pady=(0, 10))
@@ -198,7 +202,7 @@ class GrokHandoffGUI(tk.Tk):
         self.log_frame.rowconfigure(0, weight=1)
         self.log_frame.columnconfigure(0, weight=1)
 
-        self.log_text = tk.Text(self.log_frame, wrap="word", height=20)
+        self.log_text = tk.Text(self.log_frame, wrap="word", height=24)
         scrollbar = ttk.Scrollbar(self.log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.grid(row=0, column=0, sticky="nsew")
@@ -263,6 +267,7 @@ class GrokHandoffGUI(tk.Tk):
         self.handoff_button.configure(text=t("generate_handoff", self.lang))
         self.open_handoff_button.configure(text=t("open_handoff_folder", self.lang))
         self.open_output_button.configure(text=t("open_output_folder", self.lang))
+        self.stop_button.configure(text=t("stop_current_task", self.lang))
         self.log_frame.configure(text=t("log", self.lang))
 
         self.status_var.set(t(self.status_key, self.lang))
@@ -409,6 +414,7 @@ class GrokHandoffGUI(tk.Tk):
 
         self.status_key = status_key
         self.current_task_status_key = status_key
+        self.stop_requested = False
         self.status_var.set(t(self.status_key, self.lang))
         self._set_buttons_enabled(False)
         self.progressbar.start(12)
@@ -421,6 +427,9 @@ class GrokHandoffGUI(tk.Tk):
 
     def _worker_run(self, cmd: List[str]) -> None:
         try:
+            child_env = os.environ.copy()
+            child_env["PYTHONUTF8"] = "1"
+            child_env["PYTHONIOENCODING"] = "utf-8"
             self.current_process = subprocess.Popen(
                 cmd,
                 cwd=str(ROOT),
@@ -430,6 +439,7 @@ class GrokHandoffGUI(tk.Tk):
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
+                env=child_env,
             )
             assert self.current_process.stdout is not None
             for line in self.current_process.stdout:
@@ -458,7 +468,13 @@ class GrokHandoffGUI(tk.Tk):
                     self.progressbar.stop()
                 elif event == "DONE":
                     self.progressbar.stop()
-                    if value == 0:
+                    if self.stop_requested:
+                        self.status_key = "status_stopped"
+                        self.status_var.set(t(self.status_key, self.lang))
+                        self.log_text.insert(END, t("task_stopped", self.lang) + "\n")
+                        self.log_text.see(END)
+                        messagebox.showinfo(t("task_stopped_title", self.lang), t("task_stopped", self.lang))
+                    elif value == 0:
                         self.status_key = "status_completed"
                         self.status_var.set(t(self.status_key, self.lang))
                         success_message = self._success_message_for_current_task()
@@ -487,6 +503,33 @@ class GrokHandoffGUI(tk.Tk):
             self.open_output_button,
         ):
             button.configure(state=state)
+        self.stop_button.configure(state="disabled" if enabled else "normal")
+
+    def stop_current_task(self) -> None:
+        if not self.current_process or self.current_process.poll() is not None or self.stop_requested:
+            return
+        self.stop_requested = True
+        self.status_key = "status_stopping"
+        self.status_var.set(t(self.status_key, self.lang))
+        self.log_text.insert(END, t("stop_requested", self.lang) + "\n")
+        self.log_text.insert(END, t("stopping_process", self.lang) + "\n")
+        self.log_text.see(END)
+        threading.Thread(target=self._stop_worker_process, daemon=True).start()
+
+    def _stop_worker_process(self) -> None:
+        proc = self.current_process
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            deadline = time.time() + 3
+            while time.time() < deadline:
+                if proc.poll() is not None:
+                    return
+                time.sleep(0.1)
+            proc.kill()
+        except Exception as exc:
+            self.output_queue.put(f"\n[GUI stop error] {exc}\n")
 
     def _success_message_for_current_task(self) -> str:
         handoff_file = Path(self.project_dir_var.get().strip()) / "handoff" / "03_下个窗口直接复制这个.md"
