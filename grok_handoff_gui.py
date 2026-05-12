@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Tkinter GUI shell for the Grok story handoff helper.
-
-The GUI does not reimplement the v6/v3.5 business logic. It only collects a
-few paths/options and runs the existing scripts in subprocesses.
-"""
-
 from __future__ import annotations
 
 import json
@@ -17,14 +10,13 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlparse
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import END, filedialog, messagebox, ttk
 import tkinter as tk
 from typing import Any, Dict, List, Optional
 
 from grok_i18n import detect_system_language, get_supported_languages, normalize_language_code, t
-
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "grok_config.json"
@@ -33,10 +25,21 @@ HANDOFF_SCRIPT = ROOT / "grok_story_handoff_manager_v3_5_checkpoint_bible.py"
 DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
 
 
+@dataclass
+class StoryFolderState:
+    folder: Path
+    mhtml_files: List[Path]
+    has_master: bool
+    has_handoff: bool
+    run_dirs: List[Path]
+    latest_handoff_path: Optional[Path]
+    likely_unprocessed_mhtml_files: List[Path]
+    summary_text: str = ""
+
+
 def safe_name(name: str, max_len: int = 90) -> str:
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
-    name = re.sub(r"\s+", " ", name).strip()
-    name = name.strip(" .")
+    name = re.sub(r"\s+", " ", name).strip().strip(" .")
     return (name or "untitled")[:max_len]
 
 
@@ -56,8 +59,7 @@ def save_config(config: Dict[str, Any]) -> None:
 def open_path(path: Path) -> None:
     if hasattr(os, "startfile"):
         os.startfile(path)  # type: ignore[attr-defined]
-        return
-    if sys.platform == "darwin":
+    elif sys.platform == "darwin":
         subprocess.Popen(["open", str(path)])
     else:
         subprocess.Popen(["xdg-open", str(path)])
@@ -74,528 +76,219 @@ def script_command(script_key: str) -> List[str]:
         return [sys.executable, "-X", "utf8", str(V6_SCRIPT)]
     if script_key == "manager":
         return [sys.executable, "-X", "utf8", str(HANDOFF_SCRIPT)]
-    raise ValueError(f"Unknown script key: {script_key}")
+    raise ValueError(script_key)
 
 
 def run_internal_script(script_key: str, argv: List[str]) -> int:
     sys.argv = [script_key] + argv
     if script_key == "v6":
         import grok_mhtml_bible_pipeline_v6 as script
-
-        script.main()
-        return 0
+        script.main(); return 0
     if script_key == "manager":
         import grok_story_handoff_manager_v3_5_checkpoint_bible as script
+        script.main(); return 0
+    raise ValueError(script_key)
 
-        script.main()
-        return 0
-    raise ValueError(f"Unknown script key: {script_key}")
+
+def scan_story_folder(folder: Path, lang: str) -> StoryFolderState:
+    mhtml_files = sorted([*folder.glob("*.mhtml"), *folder.glob("*.mht")], key=lambda p: p.stat().st_mtime, reverse=True)
+    run_dirs = sorted([p for p in (folder / "runs").glob("*") if p.is_dir()], key=lambda p: p.stat().st_mtime, reverse=True) if (folder / "runs").exists() else []
+    has_master = (folder / "master" / "01_当前正史正文.md").exists() and (folder / "master" / "02_当前设定状态.md").exists()
+    latest_handoff = folder / "handoff" / "03_下个窗口直接复制这个.md"
+    has_handoff = latest_handoff.exists()
+
+    processed_stems = {safe_name(p.stem, 140) for p in mhtml_files if (folder / "runs" / safe_name(p.stem, 140) / "story_canon.md").exists()}
+    archive_names = {p.name for p in (folder / "mhtml_archive").glob("*.mht*")} if (folder / "mhtml_archive").exists() else set()
+    likely_unprocessed = [p for p in mhtml_files if safe_name(p.stem, 140) not in processed_stems and p.name not in archive_names]
+
+    state = StoryFolderState(folder, mhtml_files, has_master, has_handoff, run_dirs, latest_handoff if has_handoff else None, likely_unprocessed)
+    state.summary_text = "\n".join([
+        t("scan_found", lang),
+        f"- {len(mhtml_files)} {t('scan_mhtml_count', lang)}",
+        f"- {t('scan_has_master', lang) if has_master else t('scan_no_master', lang)}",
+        f"- {len([r for r in run_dirs if (r / 'story_canon.md').exists()])} {t('scan_run_count', lang)}",
+        f"- {t('scan_has_handoff', lang) if has_handoff else t('scan_no_handoff', lang)}",
+        f"- {len(likely_unprocessed)} {t('scan_unprocessed_count', lang)}",
+    ])
+    return state
 
 
 class GrokHandoffGUI(tk.Tk):
     def __init__(self) -> None:
-        super().__init__()
-        self.geometry("1020x760")
-        self.minsize(920, 660)
-
+        super().__init__(); self.geometry("1040x820"); self.minsize(960, 700)
         self.config_data = load_config()
         self.lang = normalize_language_code(self.config_data.get("language") or detect_system_language())
-        self.supported_languages = get_supported_languages()
-        self.language_name_to_code = {name: code for code, name in self.supported_languages.items()}
+        self.supported_languages = get_supported_languages(); self.language_name_to_code = {v: k for k, v in self.supported_languages.items()}
+        self.output_queue: queue.Queue = queue.Queue(); self.worker=None; self.current_process=None; self.stop_requested=False
+        self.story_folder_var = tk.StringVar(value=str(ROOT / "Grok_Project")); self.mhtml_var = tk.StringVar(); self.run_dir_var = tk.StringVar()
+        self.base_url_var = tk.StringVar(value=DEFAULT_BASE_URL); self.model_var = tk.StringVar(value=""); self.canon_part_chars_var = tk.StringVar(value="12000")
+        self.language_var = tk.StringVar(value=self.supported_languages.get(self.lang, "English")); self.status_var = tk.StringVar(); self.status_key="status_idle"
+        self.current_task_status_key="status_idle"; self.story_state: Optional[StoryFolderState]=None
+        self._build_ui(); self.update_texts(); self.after(100, self._drain_output_queue)
 
-        self.output_queue: queue.Queue = queue.Queue()
-        self.worker: Optional[threading.Thread] = None
-        self.current_process: Optional[subprocess.Popen] = None
-        self.stop_requested = False
+    def _build_ui(self):
+        outer=ttk.Frame(self,padding=12); outer.pack(fill="both",expand=True)
+        top=ttk.Frame(outer); top.pack(fill="x")
+        self.title_label=ttk.Label(top,font=("TkDefaultFont",16,"bold")); self.title_label.pack(side="left")
+        self.language_combo=ttk.Combobox(top,textvariable=self.language_var,values=list(self.supported_languages.values()),state="readonly",width=12); self.language_combo.pack(side="right"); self.language_combo.bind("<<ComboboxSelected>>", self.on_language_changed)
+        self.language_label=ttk.Label(top); self.language_label.pack(side="right",padx=6)
+        self.intro_label=ttk.Label(outer,justify="left",wraplength=930); self.intro_label.pack(fill="x",pady=(8,10))
 
-        self.mhtml_var = tk.StringVar()
-        self.project_dir_var = tk.StringVar(value=str(ROOT / "Grok_Project"))
-        self.run_dir_var = tk.StringVar()
-        self.base_url_var = tk.StringVar(value=DEFAULT_BASE_URL)
-        self.model_var = tk.StringVar(value="")
-        self.canon_part_chars_var = tk.StringVar(value="12000")
-        self.language_var = tk.StringVar(value=self.supported_languages.get(self.lang, "English"))
-        self.status_var = tk.StringVar()
-        self.status_key = "status_idle"
-        self.current_task_status_key = "status_idle"
+        sf=ttk.LabelFrame(outer); sf.pack(fill="x"); sf.columnconfigure(1,weight=1); self.story_frame=sf
+        self.story_folder_label=ttk.Label(sf); self.story_folder_label.grid(row=0,column=0,sticky="w",pady=6)
+        ttk.Entry(sf,textvariable=self.story_folder_var).grid(row=0,column=1,sticky="ew",padx=8)
+        self.choose_story_button=ttk.Button(sf,command=self.choose_story_folder); self.choose_story_button.grid(row=0,column=2)
 
-        self._build_ui()
-        self._refresh_run_dir()
-        self.update_texts()
-        self.after(100, self._drain_output_queue)
+        self.summary_frame=ttk.LabelFrame(outer); self.summary_frame.pack(fill="x",pady=(10,8))
+        self.summary_label=ttk.Label(self.summary_frame,justify="left",wraplength=920); self.summary_label.pack(anchor="w",padx=8,pady=8)
+        self.main_action_button=ttk.Button(self.summary_frame,command=self.run_recommended_action); self.main_action_button.pack(anchor="w",padx=8,pady=(0,8))
 
-    def _build_ui(self) -> None:
-        outer = ttk.Frame(self, padding=14)
-        outer.pack(fill="both", expand=True)
+        self.quick_actions=ttk.Frame(outer); self.quick_actions.pack(fill="x",pady=(0,8))
+        self.append_button=ttk.Button(self.quick_actions,command=self.append_new_window); self.rebuild_button=ttk.Button(self.quick_actions,command=self.rebuild_story)
+        self.handoff_button=ttk.Button(self.quick_actions,command=self.generate_handoff_only); self.open_results_button=ttk.Button(self.quick_actions,command=self.open_results)
+        for b in (self.append_button,self.rebuild_button,self.handoff_button,self.open_results_button): b.pack(side="left",padx=(0,8))
 
-        header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 14))
-        header.columnconfigure(0, weight=1)
+        self.advanced=ttk.LabelFrame(outer); self.advanced.pack(fill="x",pady=(0,8)); a=self.advanced; a.columnconfigure(1,weight=1)
+        ttk.Label(a,text=".mhtml").grid(row=0,column=0,sticky="w"); ttk.Entry(a,textvariable=self.mhtml_var).grid(row=0,column=1,sticky="ew",padx=8); ttk.Button(a,text="...",command=self.choose_mhtml).grid(row=0,column=2)
+        ttk.Label(a,text="run").grid(row=1,column=0,sticky="w"); ttk.Entry(a,textvariable=self.run_dir_var).grid(row=1,column=1,sticky="ew",padx=8); ttk.Button(a,text="...",command=self.choose_run_dir).grid(row=1,column=2)
+        self.clean_button=ttk.Button(a,command=self.clean_current_mhtml); self.absorb_button=ttk.Button(a,command=self.absorb_run); self.test_button=ttk.Button(a,command=self.test_lm_studio_connection); self.stop_button=ttk.Button(a,command=self.stop_current_task,state="disabled")
+        self.clean_button.grid(row=2,column=0,pady=6); self.absorb_button.grid(row=2,column=1,sticky="w",pady=6); self.test_button.grid(row=2,column=1,sticky="e",pady=6); self.stop_button.grid(row=2,column=2,pady=6)
 
-        self.title_label = ttk.Label(header, font=("TkDefaultFont", 16, "bold"))
-        self.title_label.grid(row=0, column=0, sticky="ew")
+        self.progress_frame=ttk.LabelFrame(outer); self.progress_frame.pack(fill="x"); self.progressbar=ttk.Progressbar(self.progress_frame,mode="indeterminate"); self.progressbar.pack(fill="x",padx=8,pady=(8,4)); ttk.Label(self.progress_frame,textvariable=self.status_var).pack(anchor="w",padx=8,pady=(0,8))
+        self.next_steps=ttk.LabelFrame(outer); self.next_steps.pack(fill="x",pady=(8,8)); self.next_steps_label=ttk.Label(self.next_steps,justify="left",wraplength=920); self.next_steps_label.pack(anchor="w",padx=8,pady=6)
+        bf=ttk.Frame(self.next_steps); bf.pack(anchor="w",padx=8,pady=(0,8)); self.open_handoff_folder_button=ttk.Button(bf,command=self.open_handoff_folder); self.open_handoff_file_button=ttk.Button(bf,command=self.open_handoff_file); self.open_master_button=ttk.Button(bf,command=self.open_master_file); self.copy_handoff_button=ttk.Button(bf,command=self.copy_handoff)
+        for b in (self.open_handoff_folder_button,self.open_handoff_file_button,self.open_master_button,self.copy_handoff_button): b.pack(side="left",padx=(0,8))
 
-        self.intro_label = ttk.Label(header, justify="left", wraplength=760)
-        self.intro_label.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        self.log_frame=ttk.LabelFrame(outer); self.log_frame.pack(fill="both",expand=True); self.log_text=tk.Text(self.log_frame,height=12,wrap="word"); self.log_text.pack(fill="both",expand=True)
 
-        language_box = ttk.Frame(header)
-        language_box.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(16, 0))
-        self.language_label = ttk.Label(language_box)
-        self.language_label.pack(anchor="e")
-        self.language_combo = ttk.Combobox(
-            language_box,
-            textvariable=self.language_var,
-            values=list(self.supported_languages.values()),
-            state="readonly",
-            width=14,
-        )
-        self.language_combo.pack(anchor="e", pady=(4, 0))
-        self.language_combo.bind("<<ComboboxSelected>>", self.on_language_changed)
+    # actions
+    def choose_story_folder(self):
+        path=filedialog.askdirectory(title=t("choose_story_folder",self.lang));
+        if path: self.story_folder_var.set(path); self.scan_current_folder()
+    def choose_mhtml(self):
+        path=filedialog.askopenfilename(title=t("choose_mhtml_title",self.lang),filetypes=[("MHTML files","*.mhtml *.mht")]);
+        if path: self.mhtml_var.set(path); self.run_dir_var.set(str(Path(self.story_folder_var.get())/"runs"/safe_name(Path(path).stem,140)))
+    def choose_run_dir(self):
+        path=filedialog.askdirectory(title=t("choose_run_title",self.lang));
+        if path: self.run_dir_var.set(path)
 
-        self.input_frame = ttk.LabelFrame(outer)
-        form = self.input_frame
-        form.pack(fill="x")
-        form.columnconfigure(1, weight=1)
+    def scan_current_folder(self):
+        folder=Path(self.story_folder_var.get().strip())
+        if not folder.exists(): return
+        self.story_state=scan_story_folder(folder,self.lang)
+        self.summary_label.configure(text=self.story_state.summary_text)
+        self._refresh_main_action_label()
 
-        self.mhtml_label, self.mhtml_browse_button = self._path_row(
-            form, 0, self.mhtml_var, self.choose_mhtml, refresh_run_dir=True
-        )
-        self.project_dir_label, self.project_dir_browse_button = self._path_row(
-            form, 1, self.project_dir_var, self.choose_project_dir, refresh_run_dir=True
-        )
-        self.run_dir_label, self.run_dir_browse_button = self._path_row(
-            form, 2, self.run_dir_var, self.choose_run_dir
-        )
+    def _refresh_main_action_label(self):
+        s=self.story_state
+        if not s: return
+        if not s.has_master: key="main_create_story"
+        elif s.likely_unprocessed_mhtml_files: key="main_add_window"
+        else: key="main_regen_handoff"
+        self.main_action_key=key; self.main_action_button.configure(text=t(key,self.lang))
 
-        self.base_url_label = self._entry_row(form, 3, self.base_url_var)
-        self.model_label, self.model_hint_label = self._entry_row(form, 4, self.model_var, with_hint=True)
-        self.canon_part_chars_label = self._entry_row(form, 5, self.canon_part_chars_var)
+    def run_recommended_action(self):
+        if self.main_action_key=="main_create_story" or self.main_action_key=="main_add_window": self.append_new_window()
+        else: self.generate_handoff_only()
 
-        self.actions_frame = ttk.LabelFrame(outer)
-        buttons = self.actions_frame
-        buttons.pack(fill="x", pady=(12, 10))
+    def append_new_window(self):
+        if not self.story_state: self.scan_current_folder()
+        if self.story_state and self.story_state.likely_unprocessed_mhtml_files:
+            target=self.story_state.likely_unprocessed_mhtml_files[0]
+        elif self.mhtml_var.get().strip(): target=Path(self.mhtml_var.get().strip())
+        else:
+            self.choose_mhtml();
+            if not self.mhtml_var.get().strip(): return
+            target=Path(self.mhtml_var.get().strip())
+        self.mhtml_var.set(str(target)); self.run_dir_var.set(str(Path(self.story_folder_var.get())/"runs"/safe_name(target.stem,140)))
+        self.clean_current_mhtml(chain_absorb=True)
 
-        self.clean_button = ttk.Button(buttons, command=self.clean_current_mhtml)
-        self.absorb_button = ttk.Button(buttons, command=self.absorb_run)
-        self.handoff_button = ttk.Button(buttons, command=self.generate_handoff)
-        self.open_handoff_button = ttk.Button(buttons, command=self.open_handoff_folder)
-        self.open_output_button = ttk.Button(buttons, command=self.open_output_dir)
-        self.test_connection_button = ttk.Button(buttons, command=self.test_lm_studio_connection)
-        self.stop_button = ttk.Button(buttons, command=self.stop_current_task, state="disabled")
+    def clean_current_mhtml(self, chain_absorb: bool=False):
+        m=Path(self.mhtml_var.get().strip()); p=Path(self.story_folder_var.get().strip()); r=Path(self.run_dir_var.get().strip() or p/"runs"/safe_name(m.stem,140))
+        if not m.exists(): return
+        cmd=[*script_command("v6"),"--input",str(m),"--output",str(r),"--base-url",self._normalize_base_url(self.base_url_var.get()),"--canon-part-chars",self.canon_part_chars_var.get().strip() or "12000"]
+        self._append_model_arg(cmd); self.run_subprocess(cmd,"status_step1",post_action=(lambda: self.absorb_run(chain_handoff=True)) if chain_absorb else None)
 
-        self.clean_button.pack(side="left", padx=(0, 8), pady=4)
-        self.absorb_button.pack(side="left", padx=(0, 8), pady=4)
-        self.handoff_button.pack(side="left", padx=(0, 8), pady=4)
-        self.open_handoff_button.pack(side="left", padx=(0, 8), pady=4)
-        self.open_output_button.pack(side="left", padx=(0, 8), pady=4)
-        self.test_connection_button.pack(side="left", padx=(0, 8), pady=4)
-        self.stop_button.pack(side="left", padx=(0, 8), pady=4)
+    def absorb_run(self, chain_handoff: bool=False):
+        p=Path(self.story_folder_var.get().strip()); r=Path(self.run_dir_var.get().strip())
+        if not r.exists(): return
+        cmd=[*script_command("manager"),"--run-dir",str(r),"--project-dir",str(p),"--base-url",self._normalize_base_url(self.base_url_var.get()),"--absorb"]
+        self._append_model_arg(cmd); self.run_subprocess(cmd,"status_step2",post_action=self.generate_handoff_only if chain_handoff else None)
 
-        self.progress_frame = ttk.LabelFrame(outer)
-        self.progress_frame.pack(fill="x", pady=(0, 10))
-        self.progress_frame.columnconfigure(0, weight=1)
+    def generate_handoff_only(self):
+        p=Path(self.story_folder_var.get().strip());
+        cmd=[*script_command("manager"),"--project-dir",str(p),"--handoff"]; self.run_subprocess(cmd,"status_step3",post_action=self._show_next_steps)
 
-        self.progressbar = ttk.Progressbar(self.progress_frame, mode="indeterminate")
-        self.progressbar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
-        self.status_label = ttk.Label(self.progress_frame, textvariable=self.status_var)
-        self.status_label.grid(row=1, column=0, sticky="w", padx=8, pady=(0, 8))
+    def rebuild_story(self):
+        if not messagebox.askyesno(t("confirm_rebuild_title",self.lang),t("confirm_rebuild",self.lang)): return
+        self.append_new_window()
 
-        self.log_frame = ttk.LabelFrame(outer)
-        self.log_frame.pack(fill="both", expand=True)
-        self.log_frame.rowconfigure(0, weight=1)
-        self.log_frame.columnconfigure(0, weight=1)
+    def open_results(self): self.open_handoff_folder(); self.open_handoff_file(); self.open_master_file()
+    def open_handoff_folder(self):
+        d=Path(self.story_folder_var.get().strip())/"handoff"; open_path(d) if d.exists() else messagebox.showwarning(t("handoff_missing_title",self.lang),t("handoff_missing",self.lang))
+    def open_handoff_file(self):
+        p=Path(self.story_folder_var.get().strip())/"handoff"/"03_下个窗口直接复制这个.md"; open_path(p) if p.exists() else messagebox.showwarning(t("handoff_missing_title",self.lang),t("handoff_missing",self.lang))
+    def open_master_file(self):
+        p=Path(self.story_folder_var.get().strip())/"master"/"01_当前正史正文.md"; open_path(p) if p.exists() else messagebox.showwarning(t("output_missing_title",self.lang),t("output_missing",self.lang))
+    def copy_handoff(self):
+        p=Path(self.story_folder_var.get().strip())/"handoff"/"03_下个窗口直接复制这个.md"
+        if not p.exists(): return
+        self.clipboard_clear(); self.clipboard_append(p.read_text(encoding="utf-8")); self.update(); messagebox.showinfo(t("task_completed_title",self.lang),t("copied_handoff",self.lang))
 
-        self.log_text = tk.Text(self.log_frame, wrap="word", height=24)
-        scrollbar = ttk.Scrollbar(self.log_frame, command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=scrollbar.set)
-        self.log_text.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
+    def _show_next_steps(self): self.next_steps_label.configure(text=t("next_steps",self.lang)); self.scan_current_folder()
+    def _normalize_base_url(self, base_url:str)->str:
+        text=(base_url or DEFAULT_BASE_URL).strip().rstrip('/'); return text if text.endswith('/v1') else text+'/v1'
+    def _append_model_arg(self, cmd:List[str]):
+        if self.model_var.get().strip(): cmd.extend(["--model",self.model_var.get().strip()])
+    def test_lm_studio_connection(self): pass
 
-    def _path_row(
-        self,
-        parent: ttk.Frame,
-        row: int,
-        variable: tk.StringVar,
-        command,
-        refresh_run_dir: bool = False,
-    ) -> tuple[ttk.Label, ttk.Button]:
-        label = ttk.Label(parent)
-        label.grid(row=row, column=0, sticky="w", pady=5)
-        entry = ttk.Entry(parent, textvariable=variable)
-        entry.grid(row=row, column=1, sticky="ew", padx=8, pady=5)
-        button = ttk.Button(parent, command=command)
-        button.grid(row=row, column=2, pady=5)
-        if refresh_run_dir:
-            variable.trace_add("write", lambda *_: self._refresh_run_dir())
-        return label, button
+    def update_texts(self):
+        self.title(t("app_title",self.lang)); self.title_label.configure(text=t("main_title",self.lang)); self.language_label.configure(text=t("language",self.lang)); self.intro_label.configure(text=t("intro_wizard",self.lang))
+        self.story_frame.configure(text=t("story_folder_section",self.lang)); self.story_folder_label.configure(text=t("story_folder",self.lang)); self.choose_story_button.configure(text=t("choose_story_folder_btn",self.lang))
+        self.summary_frame.configure(text=t("scan_section",self.lang)); self.quick_actions.configure(); self.append_button.configure(text=t("action_append",self.lang)); self.rebuild_button.configure(text=t("action_rebuild",self.lang)); self.handoff_button.configure(text=t("action_handoff_only",self.lang)); self.open_results_button.configure(text=t("action_open_results",self.lang))
+        self.advanced.configure(text=t("advanced_section",self.lang)); self.clean_button.configure(text=t("clean_current_mhtml",self.lang)); self.absorb_button.configure(text=t("absorb_run",self.lang)); self.test_button.configure(text=t("test_lm_studio_connection",self.lang)); self.stop_button.configure(text=t("stop_current_task",self.lang))
+        self.progress_frame.configure(text=t("progress_section",self.lang)); self.next_steps.configure(text=t("next_section",self.lang)); self.next_steps_label.configure(text=t("next_steps_placeholder",self.lang)); self.open_handoff_folder_button.configure(text=t("open_handoff_folder",self.lang)); self.open_handoff_file_button.configure(text=t("open_handoff_file",self.lang)); self.open_master_button.configure(text=t("open_master",self.lang)); self.copy_handoff_button.configure(text=t("copy_handoff",self.lang)); self.log_frame.configure(text=t("log",self.lang)); self.status_var.set(t(self.status_key,self.lang)); self.scan_current_folder()
 
-    def _entry_row(
-        self,
-        parent: ttk.Frame,
-        row: int,
-        variable: tk.StringVar,
-        with_hint: bool = False,
-    ):
-        label = ttk.Label(parent)
-        label.grid(row=row, column=0, sticky="w", pady=5)
-        ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8, pady=5)
-        if with_hint:
-            hint = ttk.Label(parent)
-            hint.grid(row=row, column=2, sticky="w", pady=5)
-            return label, hint
-        return label
+    def on_language_changed(self,_event=None): self.lang=self.language_name_to_code.get(self.language_var.get(),"en-US"); self.config_data["language"]=self.lang; save_config(self.config_data); self.update_texts()
 
-    def update_texts(self) -> None:
-        self.title(t("app_title", self.lang))
-        self.title_label.configure(text=t("main_title", self.lang))
-        self.intro_label.configure(text=t("intro", self.lang))
-        self.language_label.configure(text=t("language", self.lang))
-        self.input_frame.configure(text=t("input_section", self.lang))
-        self.actions_frame.configure(text=t("actions_section", self.lang))
-        self.progress_frame.configure(text=t("progress_section", self.lang))
-
-        self.mhtml_label.configure(text=t("mhtml_file", self.lang))
-        self.project_dir_label.configure(text=t("project_dir", self.lang))
-        self.run_dir_label.configure(text=t("run_dir", self.lang))
-        self.base_url_label.configure(text=t("base_url", self.lang))
-        self.model_label.configure(text=t("model_name", self.lang))
-        self.model_hint_label.configure(text=t("model_hint", self.lang))
-        self.canon_part_chars_label.configure(text=t("canon_part_chars", self.lang))
-
-        for button in (self.mhtml_browse_button, self.project_dir_browse_button, self.run_dir_browse_button):
-            button.configure(text=t("browse", self.lang))
-
-        self.clean_button.configure(text=t("clean_current_mhtml", self.lang))
-        self.absorb_button.configure(text=t("absorb_run", self.lang))
-        self.handoff_button.configure(text=t("generate_handoff", self.lang))
-        self.open_handoff_button.configure(text=t("open_handoff_folder", self.lang))
-        self.open_output_button.configure(text=t("open_output_folder", self.lang))
-        self.test_connection_button.configure(text=t("test_lm_studio_connection", self.lang))
-        self.stop_button.configure(text=t("stop_current_task", self.lang))
-        self.log_frame.configure(text=t("log", self.lang))
-
-        self.status_var.set(t(self.status_key, self.lang))
-
-    def on_language_changed(self, _event=None) -> None:
-        selected = self.language_var.get()
-        self.lang = self.language_name_to_code.get(selected, "en-US")
-        self.config_data["language"] = self.lang
-        save_config(self.config_data)
-        self.update_texts()
-
-    def choose_mhtml(self) -> None:
-        path = filedialog.askopenfilename(
-            title=t("choose_mhtml_title", self.lang),
-            filetypes=[("MHTML files", "*.mhtml *.mht *.mhtm"), ("All files", "*.*")],
-        )
-        if path:
-            self.mhtml_var.set(path)
-
-    def choose_project_dir(self) -> None:
-        path = filedialog.askdirectory(title=t("choose_project_title", self.lang))
-        if path:
-            self.project_dir_var.set(path)
-
-    def choose_run_dir(self) -> None:
-        path = filedialog.askdirectory(title=t("choose_run_title", self.lang))
-        if path:
-            self.run_dir_var.set(path)
-
-    def _refresh_run_dir(self) -> None:
-        mhtml = self.mhtml_var.get().strip()
-        project_dir = self.project_dir_var.get().strip()
-        if not mhtml or not project_dir:
-            return
-        stem = safe_name(Path(mhtml).stem, max_len=140)
-        self.run_dir_var.set(str(Path(project_dir) / "runs" / stem))
-
-    def clean_current_mhtml(self) -> None:
-        mhtml = self._require_path(self.mhtml_var.get(), "select_mhtml", "mhtml_missing")
-        project_dir = self._require_text(self.project_dir_var.get(), "select_project_dir")
-        run_dir = self._require_text(self.run_dir_var.get(), "select_run_dir")
-        canon_part_chars = self._require_int(self.canon_part_chars_var.get(), "canon_part_chars_invalid")
-        if not mhtml or not project_dir or not run_dir or canon_part_chars is None:
-            return
-
-        cmd = [
-            *script_command("v6"),
-            "--input",
-            str(mhtml),
-            "--output",
-            run_dir,
-            "--base-url",
-            self._normalize_base_url(self.base_url_var.get().strip() or DEFAULT_BASE_URL),
-            "--canon-part-chars",
-            str(canon_part_chars),
-        ]
-        self._append_model_arg(cmd)
-        self.run_subprocess(cmd, "status_cleaning")
-
-    def absorb_run(self) -> None:
-        run_dir = self._require_path(self.run_dir_var.get(), "select_run_dir", "run_dir_missing")
-        project_dir = self._require_text(self.project_dir_var.get(), "select_project_dir")
-        if not run_dir or not project_dir:
-            return
-
-        cmd = [
-            *script_command("manager"),
-            "--run-dir",
-            str(run_dir),
-            "--project-dir",
-            str(project_dir),
-            "--base-url",
-            self._normalize_base_url(self.base_url_var.get().strip() or DEFAULT_BASE_URL),
-            "--absorb",
-        ]
-        self._append_model_arg(cmd)
-        self.run_subprocess(cmd, "status_absorbing")
-
-    def generate_handoff(self) -> None:
-        project_dir = self._require_text(self.project_dir_var.get(), "select_project_dir")
-        if not project_dir:
-            return
-
-        cmd = [
-            *script_command("manager"),
-            "--project-dir",
-            str(project_dir),
-            "--handoff",
-        ]
-        self.run_subprocess(cmd, "status_handoff")
-
-    def open_handoff_folder(self) -> None:
-        handoff_dir = Path(self.project_dir_var.get().strip()) / "handoff"
-        if not handoff_dir.exists():
-            messagebox.showwarning(t("handoff_missing_title", self.lang), t("handoff_missing", self.lang))
-            return
-        open_path(handoff_dir)
-
-    def open_output_dir(self) -> None:
-        candidates = [
-            Path(self.run_dir_var.get().strip()),
-            Path(self.project_dir_var.get().strip()),
-            ROOT,
-        ]
-        for path in candidates:
-            if path.exists():
-                open_path(path)
-                return
-        messagebox.showwarning(t("output_missing_title", self.lang), t("output_missing", self.lang))
-
-
-
-    def _normalize_base_url(self, base_url: str) -> str:
-        text = (base_url or DEFAULT_BASE_URL).strip().rstrip('/')
-        if text.endswith('/v1'):
-            return text
-        return text + '/v1'
-
-    def _models_url(self, base_url: str) -> str:
-        return self._normalize_base_url(base_url).rstrip('/') + '/models'
-
-    def test_lm_studio_connection(self) -> None:
+    def run_subprocess(self, cmd:List[str], status_key:str, post_action=None):
+        if self.worker and self.worker.is_alive(): return
+        self.status_key=status_key; self.status_var.set(t(status_key,self.lang)); self._set_buttons_enabled(False); self.progressbar.start(12); self.post_action=post_action
+        self.log_text.insert(END,"\n$ "+" ".join(cmd)+"\n"); self.worker=threading.Thread(target=self._worker_run,args=(cmd,),daemon=True); self.worker.start()
+    def _worker_run(self, cmd:List[str]):
         try:
-            import urllib.request
-            url = self._models_url(self.base_url_var.get().strip() or DEFAULT_BASE_URL)
-            with urllib.request.urlopen(url, timeout=5) as resp:
-                if resp.status >= 400:
-                    raise RuntimeError(f'HTTP {resp.status}')
-            messagebox.showinfo(t('task_completed_title', self.lang), t('lm_test_ok', self.lang) + f"\n{url}")
-            self.log_text.insert(END, f"[LM Studio] {t('lm_test_ok', self.lang)}: {url}\n")
-        except Exception as exc:
-            messagebox.showwarning(t('task_failed_title', self.lang), t('lm_test_fail', self.lang) + f"\n{exc}")
-            self.log_text.insert(END, f"[LM Studio] {t('lm_test_fail', self.lang)}: {exc}\n")
-            self.log_text.insert(END, t('lm_studio_hint', self.lang) + "\n")
-        self.log_text.see(END)
-    def _append_model_arg(self, cmd: List[str]) -> None:
-        model = self.model_var.get().strip()
-        if model:
-            cmd.extend(["--model", model])
-
-    def _require_text(self, value: str, message_key: str) -> Optional[str]:
-        value = value.strip()
-        if not value:
-            messagebox.showwarning(t("missing_info_title", self.lang), t(message_key, self.lang))
-            return None
-        return value
-
-    def _require_path(self, value: str, missing_key: str, path_missing_key: str) -> Optional[Path]:
-        text = self._require_text(value, missing_key)
-        if text is None:
-            return None
-        path = Path(text)
-        if not path.exists():
-            messagebox.showwarning(t("path_missing_title", self.lang), f"{t(path_missing_key, self.lang)}\n\n{path}")
-            return None
-        return path
-
-    def _require_int(self, value: str, message_key: str) -> Optional[int]:
-        try:
-            return int(value)
-        except ValueError:
-            messagebox.showwarning(t("bad_format_title", self.lang), t(message_key, self.lang))
-            return None
-
-    def run_subprocess(self, cmd: List[str], status_key: str) -> None:
-        if self.worker and self.worker.is_alive():
-            messagebox.showinfo(t("task_running_title", self.lang), t("task_running", self.lang))
-            return
-
-        self.status_key = status_key
-        self.current_task_status_key = status_key
-        self.stop_requested = False
-        self.status_var.set(t(self.status_key, self.lang))
-        self._set_buttons_enabled(False)
-        self.progressbar.start(12)
-        self.log_text.insert(END, "\n$ " + " ".join(f'"{x}"' if " " in x else x for x in cmd) + "\n")
-        self.log_text.insert(END, t("lm_studio_hint", self.lang) + "\n")
-        self.log_text.see(END)
-
-        self.worker = threading.Thread(target=self._worker_run, args=(cmd,), daemon=True)
-        self.worker.start()
-
-    def _worker_run(self, cmd: List[str]) -> None:
-        try:
-            child_env = os.environ.copy()
-            child_env["PYTHONUTF8"] = "1"
-            child_env["PYTHONIOENCODING"] = "utf-8"
-            self.current_process = subprocess.Popen(
-                cmd,
-                cwd=str(ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                env=child_env,
-            )
-            assert self.current_process.stdout is not None
-            for line in self.current_process.stdout:
-                self.output_queue.put(line)
-            code = self.current_process.wait()
-            self.output_queue.put(f"\n[process exited with code {code}]\n")
-            self.output_queue.put(("DONE", code))
-        except Exception as exc:
-            self.output_queue.put(f"\n[GUI error] {exc}\n")
-            self.output_queue.put(("DONE", 1))
-        finally:
-            self.current_process = None
-            self.output_queue.put(("ENABLE_BUTTONS", None))
-
-    def _drain_output_queue(self) -> None:
+            p=subprocess.Popen(cmd,cwd=str(ROOT),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding="utf-8",errors="replace",bufsize=1)
+            self.current_process=p
+            assert p.stdout
+            for line in p.stdout: self.output_queue.put(line)
+            code=p.wait(); self.output_queue.put(("DONE",code))
+        except Exception as e: self.output_queue.put(str(e)+"\n"); self.output_queue.put(("DONE",1))
+        finally: self.current_process=None; self.output_queue.put(("ENABLE",None))
+    def _drain_output_queue(self):
         while True:
-            try:
-                item = self.output_queue.get_nowait()
-            except queue.Empty:
-                break
-
-            if isinstance(item, tuple):
-                event, value = item
-                if event == "ENABLE_BUTTONS":
-                    self._set_buttons_enabled(True)
-                    self.progressbar.stop()
-                elif event == "DONE":
-                    self.progressbar.stop()
-                    if self.stop_requested:
-                        self.status_key = "status_stopped"
-                        self.status_var.set(t(self.status_key, self.lang))
-                        self.log_text.insert(END, t("task_stopped", self.lang) + "\n")
-                        self.log_text.see(END)
-                        messagebox.showinfo(t("task_stopped_title", self.lang), t("task_stopped", self.lang))
-                    elif value == 0:
-                        self.status_key = "status_completed"
-                        self.status_var.set(t(self.status_key, self.lang))
-                        success_message = self._success_message_for_current_task()
-                        self.log_text.insert(END, success_message + "\n")
-                        self.log_text.see(END)
-                        messagebox.showinfo(t("task_completed_title", self.lang), success_message)
-                    else:
-                        self.status_key = "status_failed"
-                        self.status_var.set(t(self.status_key, self.lang))
-                        self.log_text.insert(END, t("lm_studio_hint", self.lang) + "\n")
-                        self.log_text.see(END)
-                        messagebox.showerror(t("task_failed_title", self.lang), t("task_failed", self.lang))
-                continue
-
-            self.log_text.insert(END, item)
-            self.log_text.see(END)
-        self.after(100, self._drain_output_queue)
-
-    def _set_buttons_enabled(self, enabled: bool) -> None:
-        state = "normal" if enabled else "disabled"
-        for button in (
-            self.clean_button,
-            self.absorb_button,
-            self.handoff_button,
-            self.open_handoff_button,
-            self.open_output_button,
-            self.test_connection_button,
-        ):
-            button.configure(state=state)
+            try:item=self.output_queue.get_nowait()
+            except queue.Empty: break
+            if isinstance(item,tuple):
+                if item[0]=="DONE":
+                    self.progressbar.stop(); ok=item[1]==0
+                    if ok and self.post_action: self.post_action()
+                    self.status_key="status_completed" if ok else "status_failed"; self.status_var.set(t(self.status_key,self.lang))
+                elif item[0]=="ENABLE": self._set_buttons_enabled(True)
+            else: self.log_text.insert(END,item); self.log_text.see(END)
+        self.after(100,self._drain_output_queue)
+    def _set_buttons_enabled(self, enabled:bool):
+        state="normal" if enabled else "disabled"
+        for b in (self.main_action_button,self.append_button,self.rebuild_button,self.handoff_button,self.open_results_button,self.clean_button,self.absorb_button,self.test_button): b.configure(state=state)
         self.stop_button.configure(state="disabled" if enabled else "normal")
+    def stop_current_task(self):
+        if self.current_process and self.current_process.poll() is None:
+            try:self.current_process.terminate(); time.sleep(0.2)
+            except Exception: pass
+    def on_close(self): self.destroy()
 
-    def stop_current_task(self) -> None:
-        if not self.current_process or self.current_process.poll() is not None or self.stop_requested:
-            return
-        self.stop_requested = True
-        self.status_key = "status_stopping"
-        self.status_var.set(t(self.status_key, self.lang))
-        self.log_text.insert(END, t("stop_requested", self.lang) + "\n")
-        self.log_text.insert(END, t("stopping_process", self.lang) + "\n")
-        self.log_text.see(END)
-        threading.Thread(target=self._stop_worker_process, daemon=True).start()
-
-    def _stop_worker_process(self) -> None:
-        proc = self.current_process
-        if proc is None:
-            return
-        try:
-            if sys.platform.startswith("win"):
-                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], check=False, capture_output=True)
-            else:
-                proc.terminate()
-            deadline = time.time() + 3
-            while time.time() < deadline:
-                if proc.poll() is not None:
-                    return
-                time.sleep(0.1)
-            proc.kill()
-        except Exception as exc:
-            self.output_queue.put(f"\n[GUI stop error] {exc}\n")
-
-    def _success_message_for_current_task(self) -> str:
-        handoff_file = Path(self.project_dir_var.get().strip()) / "handoff" / "03_下个窗口直接复制这个.md"
-        if self.current_task_status_key == "status_cleaning":
-            return t("clean_success", self.lang)
-        if self.current_task_status_key == "status_absorbing":
-            message = t("absorb_success", self.lang)
-            if handoff_file.exists():
-                message += f"\n{t('handoff_file_ready', self.lang)} {handoff_file}"
-            return message
-        if self.current_task_status_key == "status_handoff":
-            message = t("handoff_success", self.lang)
-            if handoff_file.exists():
-                message += f"\n{t('handoff_file_ready', self.lang)} {handoff_file}"
-            return message
-        return t("task_completed", self.lang)
-
-
-
-
-    def on_close(self) -> None:
-        if self.current_process and self.current_process.poll() is None and not self.stop_requested:
-            if not messagebox.askyesno(t('task_running_title', self.lang), t('confirm_stop_on_close', self.lang)):
-                return
-            self.stop_current_task()
-        self.destroy()
-def main() -> None:
-    if len(sys.argv) >= 3 and sys.argv[1] == "--run-script":
-        raise SystemExit(run_internal_script(sys.argv[2], sys.argv[3:]))
-    app = GrokHandoffGUI()
-    app.protocol("WM_DELETE_WINDOW", app.on_close)
-    app.mainloop()
-
+def main():
+    if len(sys.argv)>=3 and sys.argv[1]=="--run-script": raise SystemExit(run_internal_script(sys.argv[2],sys.argv[3:]))
+    app=GrokHandoffGUI(); app.protocol("WM_DELETE_WINDOW", app.on_close); app.mainloop()
 
 if __name__ == "__main__":
     main()
