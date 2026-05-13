@@ -1529,8 +1529,8 @@ def absorb_run_incrementally(
     old_recent = tail_text(old_story, old_recent_chars)
 
     paths = project_paths(project_dir)
-    print("[absorb] evaluating incremental absorb strategy...")
-    print(f"[absorb] prompt trimmed: old_bible {len(old_bible)} -> {len(old_bible_for_prompt)} chars; old_recent={old_recent_chars}, new_head={new_head_chars}, new_tail={new_tail_chars}")
+    print("[absorb] 调用模型判断增量吸收方式……")
+    print(f"[absorb] prompt 安全裁剪：old_bible {len(old_bible)} 字 → {len(old_bible_for_prompt)} 字；old_recent={old_recent_chars}，new_head={new_head_chars}，new_tail={new_tail_chars}")
     absorb_tag = f"absorb_{safe_name(run_dir.name, 40)}"
     budget = ABSORB_BIBLE_MAX_CHARS
     last_err: Optional[Exception] = None
@@ -1568,7 +1568,7 @@ def absorb_run_incrementally(
             )
             if is_ctx_overflow and round_idx < 3:
                 budget = max(4000, int(budget * 0.65))
-                print(f"[absorb] context overflow; retrying with smaller old_bible budget={budget}")
+                print(f"[absorb] 上下文超限，缩短 old_bible 后重试：budget={budget}")
                 continue
             raise
     if not raw and last_err:
