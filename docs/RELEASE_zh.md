@@ -1,5 +1,7 @@
 # 发布流程
 
+本文档可能包含规划/内部细节；当前实际使用请优先参考 README 和 USAGE。
+
 本文档只准备发布流程，不会创建真实 GitHub Release。
 
 ## 1. 本地测试
@@ -24,20 +26,26 @@ python grok_handoff_gui.py
 powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
-脚本会执行：
+脚本默认会执行：
 
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
-现在默认使用 `--onefile`，产物是单个 exe，发布包里不会再出现并列的 `_internal` 文件夹。仅在需要更易排查路径问题时再用 `-OneDir`。
+推荐产物：
 
-可选 onedir 命令：
+```text
+dist\GrokStoryHandoff\GrokStoryHandoff.exe
+```
+
+`--onefile` 可选，但为调试与发布稳定性，推荐 `--onedir`。
+
+可选 onefile 命令：
 
 ```powershell
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
 ## 3. 检查 dist
@@ -100,7 +108,6 @@ GrokStoryHandoff-windows-v0.1.0.zip
 
 `.gitignore` 已排除这些内容，但发布前仍要人工检查 zip 和仓库文件。
 
-
 ## 全自动发布
 以后不需要本地打包。流程是：
 1. Codex 修改代码并开 PR。
@@ -112,3 +119,4 @@ GrokStoryHandoff-windows-v0.1.0.zip
 
 ## Windows Actions UTF-8
 Windows GitHub Actions 可能需要 UTF-8 模式，因为 CLI help 包含中文/日文文本。若出现 UnicodeEncodeError / cp1252，workflow 应设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`。
+

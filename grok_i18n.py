@@ -3,28 +3,211 @@
 from __future__ import annotations
 import locale, os
 from typing import Dict
-DEFAULT_LANGUAGE="en-US"
-SUPPORTED_LANGUAGES={"zh-CN":"中文","ja-JP":"日本語","en-US":"English"}
-_CACHED_SYSTEM_LANGUAGE=None
-TRANSLATIONS={
-"en-US":{
-"app_title":"Grok Story Folder Wizard","main_title":"Story Folder Wizard","language":"Language","intro_wizard":"Use one folder per story. Save each full Grok window as .mhtml, put it into this folder, then let the app append it and build the next-window handoff.","story_folder_section":"Step 1: Choose Story Folder","story_folder":"Story folder","choose_story_folder":"Choose Story Folder","choose_story_folder_btn":"Choose Story Folder","scan_section":"What the app found","scan_found":"I found in this story folder:","scan_mhtml_count":"Grok .mhtml windows","scan_has_master":"Story project master already exists","scan_no_master":"No master yet (new story project)","scan_run_count":"cleaned run results","scan_has_handoff":"Next-window handoff exists","scan_no_handoff":"No handoff yet","scan_unprocessed_count":"likely unprocessed .mhtml files","main_add_window":"Add New Grok Window","main_create_story":"Create Story Project","main_regen_handoff":"Regenerate Handoff Pack","action_append":"Append New Grok Window","action_rebuild":"Rebuild Story Project","action_handoff_only":"Regenerate Handoff Only","action_open_results":"Open Results","advanced_section":"Advanced Operations","clean_current_mhtml":"Clean one .mhtml only","absorb_run":"Absorb one run only","test_lm_studio_connection":"Test LM Studio Connection","stop_current_task":"Stop Current Task","progress_section":"Progress","status_idle":"Idle","status_step1":"Step 1/3: Extracting story canon from the Grok window...","status_step2":"Step 2/3: Adding it to the story project...","status_step3":"Step 3/3: Generating the next-window handoff pack...","status_completed":"Completed","status_failed":"Failed, check logs","next_section":"Next","next_steps_placeholder":"After finishing, your next actions will appear here.","next_steps":"Done. Next:\n1) Open handoff folder.\n2) Open 03_下个窗口直接复制这个.md.\n3) Copy its content.\n4) Paste into a new Grok window.\n5) Add your next plot direction at the end.","open_handoff_folder":"Open handoff folder","open_handoff_file":"Open handoff file","open_master":"Open full story canon","copy_handoff":"Copy handoff to clipboard","copied_handoff":"Handoff content copied to clipboard.","log":"Log","choose_mhtml_title":"Select a .mhtml file","choose_run_title":"Select run folder","confirm_rebuild_title":"Confirm rebuild","confirm_rebuild":"This may overwrite master/handoff, but will not delete original .mhtml files. Continue?","handoff_missing_title":"Handoff missing","handoff_missing":"handoff does not exist yet.","output_missing_title":"File missing","output_missing":"Target file does not exist yet."},
-"zh-CN":{
-"app_title":"Grok 故事目录向导","main_title":"故事目录向导","language":"语言","intro_wizard":"一个故事用一个目录。每次 Grok 窗口写满，保存成 .mhtml 放进这个目录，然后让软件自动追加并生成下个窗口交接包。","story_folder_section":"第 1 步：选择故事目录","story_folder":"故事目录","choose_story_folder":"选择故事目录","choose_story_folder_btn":"选择故事目录","scan_section":"软件发现了什么","scan_found":"我在这个故事目录里发现：","scan_mhtml_count":"个 Grok .mhtml 窗口","scan_has_master":"已有故事项目 master","scan_no_master":"还没有 master（新故事目录）","scan_run_count":"个清洗结果 run","scan_has_handoff":"已有可复制给下个窗口的 handoff","scan_no_handoff":"还没有 handoff","scan_unprocessed_count":"个可能未处理的新 .mhtml","main_add_window":"追加这个新 Grok 窗口","main_create_story":"创建这个故事项目","main_regen_handoff":"重新生成下个窗口交接包","action_append":"追加新 Grok 窗口","action_rebuild":"从头重新整理故事目录","action_handoff_only":"只重新生成交接包","action_open_results":"打开结果","advanced_section":"高级操作","clean_current_mhtml":"仅清洗一个 .mhtml","absorb_run":"仅吸收一个 run","test_lm_studio_connection":"测试 LM Studio 连接","stop_current_task":"停止当前任务","progress_section":"运行流程","status_idle":"空闲","status_step1":"第 1 步 / 3：正在从 Grok 窗口提取小说正文……","status_step2":"第 2 步 / 3：正在整理进故事项目……","status_step3":"第 3 步 / 3：正在生成下个窗口交接包……","status_completed":"已完成","status_failed":"失败，请查看日志","next_section":"下一步","next_steps_placeholder":"完成后，这里会显示下一步。","next_steps":"整理完成。下一步：\n1. 打开 handoff 文件夹。\n2. 打开 03_下个窗口直接复制这个.md。\n3. 复制里面的内容。\n4. 粘贴到新的 Grok 窗口。\n5. 在最后写你下一段剧情方向。","open_handoff_folder":"打开 handoff 文件夹","open_handoff_file":"打开交接包文件","open_master":"打开完整正史正文","copy_handoff":"复制交接包到剪贴板","copied_handoff":"已复制交接包内容到剪贴板。","log":"日志","choose_mhtml_title":"选择 .mhtml 文件","choose_run_title":"选择 run 目录","confirm_rebuild_title":"确认重新整理","confirm_rebuild":"该操作可能覆盖 master/handoff，但不会删除原始 .mhtml。是否继续？","handoff_missing_title":"handoff 不存在","handoff_missing":"还没有 handoff 文件。","output_missing_title":"文件不存在","output_missing":"目标文件还不存在。"},
-"ja-JP":{
-"app_title":"Grok 物語フォルダーウィザード","main_title":"物語フォルダーウィザード","language":"言語","intro_wizard":"1つの物語に1つのフォルダーを使います。Grok ウィンドウが埋まったら .mhtml で保存し、このフォルダーへ入れて追加・引き継ぎ生成を行います。","story_folder_section":"ステップ1：物語フォルダーを選択","story_folder":"物語フォルダー","choose_story_folder":"物語フォルダーを選択","choose_story_folder_btn":"物語フォルダーを選択","scan_section":"ソフトが見つけた内容","scan_found":"この物語フォルダーで見つかったもの：","scan_mhtml_count":"個の Grok .mhtml ウィンドウ","scan_has_master":"master は既にあります","scan_no_master":"master はまだありません（新規プロジェクト）","scan_run_count":"個の run 結果","scan_has_handoff":"次ウィンドウ用 handoff があります","scan_no_handoff":"handoff はまだありません","scan_unprocessed_count":"個の未処理らしい .mhtml","main_add_window":"新しい Grok ウィンドウを追加","main_create_story":"物語プロジェクトを作成","main_regen_handoff":"引き継ぎパックを再生成","action_append":"新しい Grok ウィンドウを追加","action_rebuild":"最初から再整理","action_handoff_only":"handoff のみ再生成","action_open_results":"結果を開く","advanced_section":"高度な操作","clean_current_mhtml":".mhtml を1件だけ整理","absorb_run":"run を1件だけ吸収","test_lm_studio_connection":"LM Studio 接続テスト","stop_current_task":"現在のタスクを停止","progress_section":"進行","status_idle":"待機中","status_step1":"ステップ 1/3：Grok ウィンドウから本文を抽出中...","status_step2":"ステップ 2/3：物語プロジェクトへ追加中...","status_step3":"ステップ 3/3：次ウィンドウ用 handoff を生成中...","status_completed":"完了","status_failed":"失敗。ログを確認してください","next_section":"次の操作","next_steps_placeholder":"完了後、次の操作をここに表示します。","next_steps":"整理が完了しました。次へ：\n1. handoff フォルダーを開く\n2. 03_下个窗口直接复制这个.md を開く\n3. 内容をコピー\n4. 新しい Grok ウィンドウへ貼り付け\n5. 最後に次の展開を書く","open_handoff_folder":"handoff フォルダーを開く","open_handoff_file":"handoff ファイルを開く","open_master":"正史本文を開く","copy_handoff":"handoff をクリップボードへコピー","copied_handoff":"handoff をコピーしました。","log":"ログ","choose_mhtml_title":".mhtml を選択","choose_run_title":"run フォルダーを選択","confirm_rebuild_title":"再整理の確認","confirm_rebuild":"master/handoff を上書きする可能性があります（.mhtml は削除しません）。続行しますか？","handoff_missing_title":"handoff がありません","handoff_missing":"handoff はまだありません。","output_missing_title":"ファイルがありません","output_missing":"対象ファイルはまだありません。"}}
 
-def get_supported_languages() -> Dict[str,str]: return dict(SUPPORTED_LANGUAGES)
-def normalize_language_code(raw:str)->str:
-    v=(raw or '').split(':')[0].split('.')[0].replace('_','-').lower()
-    if v.startswith('zh'): return 'zh-CN'
-    if v.startswith('ja'): return 'ja-JP'
-    return 'en-US'
-def detect_system_language()->str:
+DEFAULT_LANGUAGE = "en-US"
+SUPPORTED_LANGUAGES = {"zh-CN": "中文", "ja-JP": "日本語", "en-US": "English"}
+_CACHED_SYSTEM_LANGUAGE = None
+
+TRANSLATIONS = {
+    "en-US": {
+        "app_title": "Grok Story Folder Wizard",
+        "main_title": "Story Folder Wizard",
+        "language": "Language",
+        "intro_wizard": "Use one folder per story. Save each full Grok window as .mhtml, put it into this folder, then let the app append it and build the next-window handoff.",
+        "story_folder_section": "Step 1: Choose Story Folder",
+        "story_folder": "Story folder",
+        "choose_story_folder": "Choose Story Folder",
+        "choose_story_folder_btn": "Choose Story Folder",
+        "scan_section": "What the app found",
+        "scan_found": "I found in this story folder:",
+        "scan_mhtml_count": "Grok .mhtml windows",
+        "scan_has_master": "Story project master already exists",
+        "scan_no_master": "No master yet (new story project)",
+        "scan_run_count": "cleaned run results",
+        "scan_has_handoff": "Next-window handoff exists",
+        "scan_no_handoff": "No handoff yet",
+        "scan_unprocessed_count": "likely unprocessed .mhtml files",
+        "main_add_window": "Add New Grok Window",
+        "main_create_story": "Create Story Project",
+        "main_regen_handoff": "Regenerate Handoff Pack",
+        "action_append": "Append New Grok Window",
+        "action_rebuild": "Rebuild Story Project",
+        "action_handoff_only": "Regenerate Handoff Only",
+        "action_open_results": "Open Results",
+        "advanced_section": "Advanced Operations",
+        "clean_current_mhtml": "Clean one .mhtml only",
+        "absorb_run": "Absorb one run only",
+        "test_lm_studio_connection": "Test LM Studio Connection",
+        "stop_current_task": "Stop Current Task",
+        "progress_section": "Progress",
+        "status_idle": "Idle",
+        "status_step1": "Step 1/3: Extracting story canon from the Grok window...",
+        "status_step2": "Step 2/3: Adding it to the story project...",
+        "status_step3": "Step 3/3: Generating the next-window handoff pack...",
+        "status_completed": "Completed",
+        "status_failed": "Failed, check logs",
+        "status_stopped": "Stopped",
+        "next_section": "Next",
+        "next_steps_placeholder": "After finishing, your next actions will appear here.",
+        "next_steps": "Done. Next:\n1) Open handoff folder.\n2) Open 03_下个窗口直接复制这个.md.\n3) Copy its content.\n4) Paste into a new Grok window.\n5) Add your next plot direction at the end.",
+        "open_handoff_folder": "Open handoff folder",
+        "open_handoff_file": "Open handoff file",
+        "open_master": "Open full story canon",
+        "copy_handoff": "Copy handoff to clipboard",
+        "copied_handoff": "Handoff content copied to clipboard.",
+        "log": "Log",
+        "choose_mhtml_title": "Select a .mhtml file",
+        "choose_run_title": "Select run folder",
+        "confirm_rebuild_title": "Confirm rebuild",
+        "confirm_rebuild": "This may overwrite master/handoff, but will not delete original .mhtml files. Continue?",
+        "confirm_close_running_title": "Task still running",
+        "confirm_close_running": "A task is still running. Closing the window will stop it. Continue?",
+        "handoff_missing_title": "Handoff missing",
+        "handoff_missing": "handoff does not exist yet.",
+        "output_missing_title": "File missing",
+        "output_missing": "Target file does not exist yet.",
+    },
+    "zh-CN": {
+        "app_title": "Grok 故事目录向导",
+        "main_title": "故事目录向导",
+        "language": "语言",
+        "intro_wizard": "一个故事用一个目录。每次 Grok 窗口写满，保存成 .mhtml 放进这个目录，然后让软件自动追加并生成下个窗口交接包。",
+        "story_folder_section": "第 1 步：选择故事目录",
+        "story_folder": "故事目录",
+        "choose_story_folder": "选择故事目录",
+        "choose_story_folder_btn": "选择故事目录",
+        "scan_section": "软件发现了什么",
+        "scan_found": "我在这个故事目录里发现：",
+        "scan_mhtml_count": "个 Grok .mhtml 窗口",
+        "scan_has_master": "已有故事项目 master",
+        "scan_no_master": "还没有 master（新故事目录）",
+        "scan_run_count": "个清洗结果 run",
+        "scan_has_handoff": "已有可复制给下个窗口的 handoff",
+        "scan_no_handoff": "还没有 handoff",
+        "scan_unprocessed_count": "个可能未处理的新 .mhtml",
+        "main_add_window": "追加这个新 Grok 窗口",
+        "main_create_story": "创建这个故事项目",
+        "main_regen_handoff": "重新生成下个窗口交接包",
+        "action_append": "追加新 Grok 窗口",
+        "action_rebuild": "从头重新整理故事目录",
+        "action_handoff_only": "只重新生成交接包",
+        "action_open_results": "打开结果",
+        "advanced_section": "高级操作",
+        "clean_current_mhtml": "仅清洗一个 .mhtml",
+        "absorb_run": "仅吸收一个 run",
+        "test_lm_studio_connection": "测试 LM Studio 连接",
+        "stop_current_task": "停止当前任务",
+        "progress_section": "运行流程",
+        "status_idle": "空闲",
+        "status_step1": "第 1 步 / 3：正在从 Grok 窗口提取小说正文……",
+        "status_step2": "第 2 步 / 3：正在整理进故事项目……",
+        "status_step3": "第 3 步 / 3：正在生成下个窗口交接包……",
+        "status_completed": "已完成",
+        "status_failed": "失败，请查看日志",
+        "status_stopped": "已停止",
+        "next_section": "下一步",
+        "next_steps_placeholder": "完成后，这里会显示下一步。",
+        "next_steps": "整理完成。下一步：\n1. 打开 handoff 文件夹。\n2. 打开 03_下个窗口直接复制这个.md。\n3. 复制里面的内容。\n4. 粘贴到新的 Grok 窗口。\n5. 在最后写你下一段剧情方向。",
+        "open_handoff_folder": "打开 handoff 文件夹",
+        "open_handoff_file": "打开交接包文件",
+        "open_master": "打开完整正史正文",
+        "copy_handoff": "复制交接包到剪贴板",
+        "copied_handoff": "已复制交接包内容到剪贴板。",
+        "log": "日志",
+        "choose_mhtml_title": "选择 .mhtml 文件",
+        "choose_run_title": "选择 run 目录",
+        "confirm_rebuild_title": "确认重新整理",
+        "confirm_rebuild": "该操作可能覆盖 master/handoff，但不会删除原始 .mhtml。是否继续？",
+        "confirm_close_running_title": "任务仍在运行",
+        "confirm_close_running": "当前任务还在运行。关闭窗口会停止任务，是否继续？",
+        "handoff_missing_title": "handoff 不存在",
+        "handoff_missing": "还没有 handoff 文件。",
+        "output_missing_title": "文件不存在",
+        "output_missing": "目标文件还不存在。",
+    },
+    "ja-JP": {
+        "app_title": "Grok 物語フォルダーウィザード",
+        "main_title": "物語フォルダーウィザード",
+        "language": "言語",
+        "intro_wizard": "1つの物語に1つのフォルダーを使います。Grok ウィンドウが埋まったら .mhtml で保存し、このフォルダーへ入れて追加・引き継ぎ生成を行います。",
+        "story_folder_section": "ステップ1：物語フォルダーを選択",
+        "story_folder": "物語フォルダー",
+        "choose_story_folder": "物語フォルダーを選択",
+        "choose_story_folder_btn": "物語フォルダーを選択",
+        "scan_section": "ソフトが見つけた内容",
+        "scan_found": "この物語フォルダーで見つかったもの：",
+        "scan_mhtml_count": "個の Grok .mhtml ウィンドウ",
+        "scan_has_master": "master は既にあります",
+        "scan_no_master": "master はまだありません（新規プロジェクト）",
+        "scan_run_count": "個の run 結果",
+        "scan_has_handoff": "次ウィンドウ用 handoff があります",
+        "scan_no_handoff": "handoff はまだありません",
+        "scan_unprocessed_count": "個の未処理らしい .mhtml",
+        "main_add_window": "新しい Grok ウィンドウを追加",
+        "main_create_story": "物語プロジェクトを作成",
+        "main_regen_handoff": "引き継ぎパックを再生成",
+        "action_append": "新しい Grok ウィンドウを追加",
+        "action_rebuild": "最初から再整理",
+        "action_handoff_only": "handoff のみ再生成",
+        "action_open_results": "結果を開く",
+        "advanced_section": "高度な操作",
+        "clean_current_mhtml": ".mhtml を1件だけ整理",
+        "absorb_run": "run を1件だけ吸収",
+        "test_lm_studio_connection": "LM Studio 接続テスト",
+        "stop_current_task": "現在のタスクを停止",
+        "progress_section": "進行",
+        "status_idle": "待機中",
+        "status_step1": "ステップ 1/3：Grok ウィンドウから本文を抽出中...",
+        "status_step2": "ステップ 2/3：物語プロジェクトへ追加中...",
+        "status_step3": "ステップ 3/3：次ウィンドウ用 handoff を生成中...",
+        "status_completed": "完了",
+        "status_failed": "失敗。ログを確認してください",
+        "status_stopped": "停止済み",
+        "next_section": "次の操作",
+        "next_steps_placeholder": "完了後、次の操作をここに表示します。",
+        "next_steps": "整理が完了しました。次へ：\n1. handoff フォルダーを開く\n2. 03_下个窗口直接复制这个.md を開く\n3. 内容をコピー\n4. 新しい Grok ウィンドウへ貼り付け\n5. 最後に次の展開を書く",
+        "open_handoff_folder": "handoff フォルダーを開く",
+        "open_handoff_file": "handoff ファイルを開く",
+        "open_master": "正史本文を開く",
+        "copy_handoff": "handoff をクリップボードへコピー",
+        "copied_handoff": "handoff をコピーしました。",
+        "log": "ログ",
+        "choose_mhtml_title": ".mhtml を選択",
+        "choose_run_title": "run フォルダーを選択",
+        "confirm_rebuild_title": "再整理の確認",
+        "confirm_rebuild": "master/handoff を上書きする可能性があります（.mhtml は削除しません）。続行しますか？",
+        "confirm_close_running_title": "タスク実行中",
+        "confirm_close_running": "タスクがまだ実行中です。ウィンドウを閉じるとタスクは停止します。続行しますか？",
+        "handoff_missing_title": "handoff がありません",
+        "handoff_missing": "handoff はまだありません。",
+        "output_missing_title": "ファイルがありません",
+        "output_missing": "対象ファイルはまだありません。",
+    },
+}
+
+
+def get_supported_languages() -> Dict[str, str]:
+    return dict(SUPPORTED_LANGUAGES)
+
+
+def normalize_language_code(raw: str) -> str:
+    v = (raw or "").split(":")[0].split(".")[0].replace("_", "-").lower()
+    if v.startswith("zh"):
+        return "zh-CN"
+    if v.startswith("ja"):
+        return "ja-JP"
+    return "en-US"
+
+
+def detect_system_language() -> str:
     global _CACHED_SYSTEM_LANGUAGE
-    if _CACHED_SYSTEM_LANGUAGE: return _CACHED_SYSTEM_LANGUAGE
-    raw=os.environ.get('LANG') or (locale.getdefaultlocale()[0] if locale.getdefaultlocale() else '') or DEFAULT_LANGUAGE
-    _CACHED_SYSTEM_LANGUAGE=normalize_language_code(raw); return _CACHED_SYSTEM_LANGUAGE
-def t(key:str,lang:str|None=None)->str:
-    lang=normalize_language_code(lang or detect_system_language())
-    return TRANSLATIONS.get(lang,TRANSLATIONS[DEFAULT_LANGUAGE]).get(key,TRANSLATIONS[DEFAULT_LANGUAGE].get(key,key))
+    if _CACHED_SYSTEM_LANGUAGE:
+        return _CACHED_SYSTEM_LANGUAGE
+    raw = os.environ.get("LANG") or (locale.getdefaultlocale()[0] if locale.getdefaultlocale() else "") or DEFAULT_LANGUAGE
+    _CACHED_SYSTEM_LANGUAGE = normalize_language_code(raw)
+    return _CACHED_SYSTEM_LANGUAGE
+
+
+def t(key: str, lang: str | None = None) -> str:
+    lang = normalize_language_code(lang or detect_system_language())
+    return TRANSLATIONS.get(lang, TRANSLATIONS[DEFAULT_LANGUAGE]).get(key, TRANSLATIONS[DEFAULT_LANGUAGE].get(key, key))

@@ -1,5 +1,7 @@
 # 常见问题与排障
 
+本文档可能包含规划/内部细节；当前实际使用请优先参考 README 和 USAGE。
+
 这份文档专门记录实际使用本地模型、LM Studio、OpenAI-compatible API 时容易踩的坑。
 
 ## 1. `n_keep >= n_ctx`
@@ -218,3 +220,6 @@ python grok_handoff_cli.py clean --input "D:\My Stories\story window.mhtml" --ou
 
 ## Windows Actions UTF-8
 Windows GitHub Actions 可能需要 UTF-8 模式，因为 CLI help 包含中文/日文文本。若出现 UnicodeEncodeError / cp1252，workflow 应设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`。
+
+
+
