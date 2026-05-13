@@ -1,5 +1,5 @@
 Param(
-    [switch]$OneFile
+    [switch]$OneDir
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,14 +29,14 @@ $commonArgs = @(
     "grok_handoff_gui.py"
 )
 
-if ($OneFile) {
-    Write-Host "Building single-file executable. This starts slower and can be harder to debug."
-    python -m PyInstaller --onefile @commonArgs
-    Write-Host "Build output: dist\GrokStoryHandoff.exe"
-} else {
-    Write-Host "Building recommended onedir executable..."
+if ($OneDir) {
+    Write-Host "Building onedir executable..."
     python -m PyInstaller --onedir @commonArgs
     Write-Host "Build output: dist\GrokStoryHandoff\GrokStoryHandoff.exe"
+} else {
+    Write-Host "Building single-file executable (no dist\\GrokStoryHandoff\\_internal folder in release zip)."
+    python -m PyInstaller --onefile @commonArgs
+    Write-Host "Build output: dist\GrokStoryHandoff.exe"
 }
 
 Write-Host "Done."

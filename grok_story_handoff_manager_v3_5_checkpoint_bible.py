@@ -1492,13 +1492,18 @@ def absorb_run_incrementally(
     # 否则 old_bible + old_recent + new_head/tail 会超过 LM Studio 上下文。
     # master 文件本身不删减，只对“吸收判断 prompt”做安全裁剪。
     ABSORB_BIBLE_MAX_CHARS = 18000
-    old_bible_for_prompt = old_bible
-    if len(old_bible_for_prompt) > ABSORB_BIBLE_MAX_CHARS:
-        old_bible_for_prompt = (
-            head_text(old_bible_for_prompt, 9000)
+
+    def _compress_bible_for_prompt(src: str, limit: int) -> str:
+        if len(src) <= limit:
+            return src
+        half = max(2000, limit // 2)
+        return (
+            head_text(src, half)
             + "\n\n【中间设定省略：仅用于本次吸收判断，master\\02_当前设定状态.md 原文不删减。】\n\n"
-            + tail_text(old_bible_for_prompt, 9000)
+            + tail_text(src, half)
         )
+
+    old_bible_for_prompt = _compress_bible_for_prompt(old_bible, ABSORB_BIBLE_MAX_CHARS)
 
     if not old_story:
         init_master_from_run(
@@ -2016,6 +2021,7 @@ def cli_main(argv: List[str]) -> bool:
     ap.add_argument("--handoff", action="store_true", help="生成 handoff")
     ap.add_argument("--run-dir", default=None, help="直接吸收已有 run 目录")
     ap.add_argument("--think", action="store_true", help="不加 /no_think")
+    ap.add_argument("--test-lm", action="store_true", help="仅测试 LM Studio 连接与模型可用性")
 
     args = ap.parse_args(argv[1:])
 
@@ -2024,6 +2030,12 @@ def cli_main(argv: List[str]) -> bool:
     v6_script = Path(args.v6)
 
     run_dir: Optional[Path] = Path(args.run_dir) if args.run_dir else None
+
+    if args.test_lm:
+        client = LMStudioClient(args.base_url, timeout_seconds=DEFAULT_TIMEOUT_SECONDS, max_retries=DEFAULT_MAX_RETRIES)
+        model_id = args.model or client.auto_model()
+        print(f"[LM Studio] 连接正常，模型：{model_id}")
+        return True
 
     if args.run_v6:
         run_dir = process_one_mhtml(
