@@ -240,7 +240,15 @@ class GrokHandoffGUI(tk.Tk):
         text=(base_url or DEFAULT_BASE_URL).strip().rstrip('/'); return text if text.endswith('/v1') else text+'/v1'
     def _append_model_arg(self, cmd:List[str]):
         if self.model_var.get().strip(): cmd.extend(["--model",self.model_var.get().strip()])
-    def test_lm_studio_connection(self): pass
+    def test_lm_studio_connection(self):
+        cmd=[
+            *script_command("manager"),
+            "--test-lm",
+            "--base-url",
+            self._normalize_base_url(self.base_url_var.get()),
+        ]
+        self._append_model_arg(cmd)
+        self.run_subprocess(cmd,"status_idle")
 
     def update_texts(self):
         self.title(t("app_title",self.lang)); self.title_label.configure(text=t("main_title",self.lang)); self.language_label.configure(text=t("language",self.lang)); self.intro_label.configure(text=t("intro_wizard",self.lang))
@@ -271,9 +279,18 @@ class GrokHandoffGUI(tk.Tk):
             if isinstance(item,tuple):
                 if item[0]=="DONE":
                     self.progressbar.stop(); ok=item[1]==0
-                    if ok and self.post_action: self.post_action()
+                    follow_up = self.post_action if ok else None
+                    self.post_action = None
+                    if follow_up:
+                        follow_up()
+                        # follow_up 可能立即启动下一段子流程；此时不能把状态提前标记为 completed。
+                        if self.worker and self.worker.is_alive():
+                            continue
                     self.status_key="status_completed" if ok else "status_failed"; self.status_var.set(t(self.status_key,self.lang))
-                elif item[0]=="ENABLE": self._set_buttons_enabled(True)
+                elif item[0]=="ENABLE":
+                    # 链式流程切换时，上一段 worker 退出会先发 ENABLE；若下一段已启动，不应解锁按钮。
+                    if not (self.worker and self.worker.is_alive()):
+                        self._set_buttons_enabled(True)
             else: self.log_text.insert(END,item); self.log_text.see(END)
         self.after(100,self._drain_output_queue)
     def _set_buttons_enabled(self, enabled:bool):

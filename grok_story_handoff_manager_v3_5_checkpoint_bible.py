@@ -367,8 +367,21 @@ class LMStudioClient:
                     raise RuntimeError(f"HTTP {r.status_code}：{r.text[:800]}")
 
                 data = r.json()
-                msg = (((data.get("choices") or [{}])[0]).get("message") or {})
+                choice0 = (data.get("choices") or [{}])[0] or {}
+                msg = choice0.get("message") or {}
+                finish_reason = str(choice0.get("finish_reason") or "").strip().lower()
                 content = clean_model_output(msg.get("content") or "")
+
+                # completion 因长度截断时，content 常是半截 JSON，会在后续解析阶段报错。
+                # 在这里优先识别并重试/报错，便于定位和调参。
+                if finish_reason == "length":
+                    debug_dir.mkdir(parents=True, exist_ok=True)
+                    write_text(debug_dir / f"{tag}_truncated_attempt{attempt}.json", json.dumps(data, ensure_ascii=False, indent=2))
+                    usage = data.get("usage") or {}
+                    raise RuntimeError(
+                        "模型输出被长度截断（finish_reason=length）。"
+                        f"建议提高 --max-tokens 或缩短输入；usage={usage}"
+                    )
 
                 if content:
                     return content
@@ -401,26 +414,92 @@ def clean_model_output(raw: str) -> str:
     return raw.strip()
 
 
+def _iter_brace_json_candidates(text: str) -> List[str]:
+    candidates: List[str] = []
+    start = -1
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                candidates.append(text[start:i + 1])
+
+    return candidates
+
+
 def extract_json_object(text: str) -> Dict[str, Any]:
     text = clean_model_output(text)
+    if not text:
+        raise ValueError("模型返回为空")
 
     # 直接 parse
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
         pass
 
-    # 从文本中找最外层 JSON
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        candidate = text[start:end + 1]
+    # 优先解析代码块中的 JSON
+    for block in re.findall(r"```(?:json)?\s*([\s\S]*?)```", text, flags=re.IGNORECASE):
+        block = block.strip()
+        if not block:
+            continue
         try:
-            return json.loads(candidate)
+            parsed = json.loads(block)
+            if isinstance(parsed, dict):
+                return parsed
         except Exception:
-            pass
+            continue
 
-    raise ValueError("模型没有返回可解析 JSON")
+    # 扫描所有平衡的大括号片段，取第一个可解析对象
+    for candidate in _iter_brace_json_candidates(text):
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            continue
+
+    # 回退：常见中文模型会输出全角标点，尽量修复一次
+    normalized = (
+        text.replace("“", '"')
+        .replace("”", '"')
+        .replace("‘", "'")
+        .replace("’", "'")
+        .replace("：", ":")
+        .replace("，", ",")
+    )
+    for candidate in _iter_brace_json_candidates(normalized):
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            continue
+
+    preview = text[:300].replace("\n", " ")
+    raise ValueError(f"模型没有返回可解析 JSON（前300字预览：{preview}）")
 
 
 # =========================
@@ -1413,13 +1492,18 @@ def absorb_run_incrementally(
     # 否则 old_bible + old_recent + new_head/tail 会超过 LM Studio 上下文。
     # master 文件本身不删减，只对“吸收判断 prompt”做安全裁剪。
     ABSORB_BIBLE_MAX_CHARS = 18000
-    old_bible_for_prompt = old_bible
-    if len(old_bible_for_prompt) > ABSORB_BIBLE_MAX_CHARS:
-        old_bible_for_prompt = (
-            head_text(old_bible_for_prompt, 9000)
+
+    def _compress_bible_for_prompt(src: str, limit: int) -> str:
+        if len(src) <= limit:
+            return src
+        half = max(2000, limit // 2)
+        return (
+            head_text(src, half)
             + "\n\n【中间设定省略：仅用于本次吸收判断，master\\02_当前设定状态.md 原文不删减。】\n\n"
-            + tail_text(old_bible_for_prompt, 9000)
+            + tail_text(src, half)
         )
+
+    old_bible_for_prompt = _compress_bible_for_prompt(old_bible, ABSORB_BIBLE_MAX_CHARS)
 
     if not old_story:
         init_master_from_run(
@@ -1445,26 +1529,50 @@ def absorb_run_incrementally(
     old_recent = tail_text(old_story, old_recent_chars)
 
     paths = project_paths(project_dir)
-    print("[absorb] 调用模型判断增量吸收方式……")
-    print(f"[absorb] prompt 安全裁剪：old_bible {len(old_bible)} 字 → {len(old_bible_for_prompt)} 字；old_recent={old_recent_chars}，new_head={new_head_chars}，new_tail={new_tail_chars}")
-    raw = client.complete(
-        absorb_plan_prompt(
-            old_bible=old_bible_for_prompt,
-            old_recent=old_recent,
-            new_head=new_head,
-            new_tail=new_tail,
-            omitted_notice=notice,
-            new_user_prompts=new_user_prompts,
-            new_canon_notes=new_canon_notes,
-            auto_trim_chars=auto_trim,
-        ),
-        model=model,
-        max_tokens=10000,
-        temperature=temperature,
-        debug_dir=paths["debug"],
-        tag=f"absorb_{safe_name(run_dir.name, 40)}",
-        no_think=no_think,
-    )
+    print("[absorb] evaluating incremental absorb strategy...")
+    print(f"[absorb] prompt trimmed: old_bible {len(old_bible)} -> {len(old_bible_for_prompt)} chars; old_recent={old_recent_chars}, new_head={new_head_chars}, new_tail={new_tail_chars}")
+    absorb_tag = f"absorb_{safe_name(run_dir.name, 40)}"
+    budget = ABSORB_BIBLE_MAX_CHARS
+    last_err: Optional[Exception] = None
+    raw = ""
+    for round_idx in range(4):
+        old_bible_for_prompt = _compress_bible_for_prompt(old_bible, budget)
+        try:
+            raw = client.complete(
+                absorb_plan_prompt(
+                    old_bible=old_bible_for_prompt,
+                    old_recent=old_recent,
+                    new_head=new_head,
+                    new_tail=new_tail,
+                    omitted_notice=notice,
+                    new_user_prompts=new_user_prompts,
+                    new_canon_notes=new_canon_notes,
+                    auto_trim_chars=auto_trim,
+                ),
+                model=model,
+                max_tokens=10000,
+                temperature=temperature,
+                debug_dir=paths["debug"],
+                tag=absorb_tag,
+                no_think=no_think,
+            )
+            break
+        except RuntimeError as e:
+            last_err = e
+            msg = str(e)
+            is_ctx_overflow = (
+                ("n_keep" in msg and "n_ctx" in msg)
+                or ("exceeds the available context size" in msg)
+                or ("greater than the context length" in msg)
+                or ("request (" in msg and "context" in msg)
+            )
+            if is_ctx_overflow and round_idx < 3:
+                budget = max(4000, int(budget * 0.65))
+                print(f"[absorb] context overflow; retrying with smaller old_bible budget={budget}")
+                continue
+            raise
+    if not raw and last_err:
+        raise last_err
 
     write_text(paths["debug"] / f"{stamp_now()}_absorb_raw.txt", raw)
 
@@ -1913,6 +2021,7 @@ def cli_main(argv: List[str]) -> bool:
     ap.add_argument("--handoff", action="store_true", help="生成 handoff")
     ap.add_argument("--run-dir", default=None, help="直接吸收已有 run 目录")
     ap.add_argument("--think", action="store_true", help="不加 /no_think")
+    ap.add_argument("--test-lm", action="store_true", help="仅测试 LM Studio 连接与模型可用性")
 
     args = ap.parse_args(argv[1:])
 
@@ -1921,6 +2030,12 @@ def cli_main(argv: List[str]) -> bool:
     v6_script = Path(args.v6)
 
     run_dir: Optional[Path] = Path(args.run_dir) if args.run_dir else None
+
+    if args.test_lm:
+        client = LMStudioClient(args.base_url, timeout_seconds=DEFAULT_TIMEOUT_SECONDS, max_retries=DEFAULT_MAX_RETRIES)
+        model_id = args.model or client.auto_model()
+        print(f"[LM Studio] 连接正常，模型：{model_id}")
+        return True
 
     if args.run_v6:
         run_dir = process_one_mhtml(
