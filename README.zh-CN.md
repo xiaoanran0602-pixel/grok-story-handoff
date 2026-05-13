@@ -57,3 +57,23 @@ python grok_handoff_gui.py
 - GUI 是向导层，负责更好理解和操作。
 
 更多细节请看 `docs/USAGE_zh.md`。
+
+
+## 打包与发布口径
+
+默认推荐使用 `--onedir`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
+``` 
+
+默认产物：
+
+```text
+dist\GrokStoryHandoff\GrokStoryHandoff.exe
+``` 
+
+`--onefile` 可选，但为调试和发布稳定性，推荐 `--onedir`。
+
+
+

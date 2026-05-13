@@ -1,5 +1,7 @@
 # Troubleshooting
 
+This document may describe planned/internal details; for current usage, see README and USAGE.
+
 This document collects common issues when using local models, LM Studio, and OpenAI-compatible APIs.
 
 ## 1. `n_keep >= n_ctx`
@@ -218,3 +220,5 @@ Most users should not need extra changes.
 
 ## Windows Actions UTF-8
 Windows GitHub Actions may need UTF-8 mode because CLI help contains Chinese/Japanese text. If UnicodeEncodeError / cp1252 appears, workflow should set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`.
+
+

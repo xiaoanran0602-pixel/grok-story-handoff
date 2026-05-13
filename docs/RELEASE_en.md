@@ -1,5 +1,7 @@
 # Release Workflow
 
+This document may describe planned/internal details; for current usage, see README and USAGE.
+
 This document only prepares the release workflow. It does not create a real GitHub Release.
 
 ## 1. Local Test
@@ -24,20 +26,26 @@ Check that:
 powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
-The script runs:
+The script runs (default):
 
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
-Default build now uses `--onefile` so the release artifact is a single exe without a `_internal` folder next to it. Use `-OneDir` only when you need easier debugging.
+Recommended output:
 
-Optional onedir build:
+```text
+dist\GrokStoryHandoff\GrokStoryHandoff.exe
+```
+
+`--onefile` is optional, but `--onedir` is recommended for debugging and release stability.
+
+Optional onefile build:
 
 ```powershell
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
 ```
 
 ## 3. Check dist
@@ -100,7 +108,6 @@ Before publishing, make sure you did not upload:
 
 These are ignored by `.gitignore`, but always inspect the zip and repository before publishing.
 
-
 ## Fully automated release
 No local packaging is required:
 1. Codex opens a PR.
@@ -112,3 +119,4 @@ No local packaging is required:
 
 ## Windows Actions UTF-8
 Windows GitHub Actions may need UTF-8 mode because CLI help contains Chinese/Japanese text. If UnicodeEncodeError / cp1252 appears, workflow should set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`.
+

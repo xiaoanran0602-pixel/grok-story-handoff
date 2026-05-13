@@ -1,6 +1,6 @@
 # Grok Story Handoff
 
-An AI-assisted local tool for cleaning long Grok `.mhtml` conversations into story canon, story bible, and handoff packs for the next chat window.
+Grok Story Handoff is an AI-assisted local tool that turns saved Grok `.mhtml` windows into a long-term story project and a next-window handoff pack.
 
 这是一个基于 AI 的 Grok 长对话清洗与续写交接工具。
 
@@ -17,11 +17,11 @@ Download Windows Release: https://github.com/xiaoanran0602-pixel/grok-story-hand
 
 This project is designed for long-form fiction workflows where one Grok window eventually fills up. Instead of pasting a huge conversation into the next window, you can:
 
-1. Save the current Grok page as `.mhtml`.
-2. Clean it into `story_canon.md`.
-3. Absorb it into a project-level `master/`.
-4. Generate a compact `handoff/` package.
-5. Paste the handoff into the next Grok window.
+1. Keep one story in one story folder.
+2. Save each full Grok window as `.mhtml` and put it in that folder.
+3. Let the app scan and detect the current story state.
+4. Choose whether to append a new window, rebuild the story project, or regenerate handoff only.
+5. Copy the generated handoff into the next Grok window.
 
 Intermediate files are written to disk on purpose. Long-running local model tasks should not keep all intermediate results only in memory. v3.5 writes chunk extraction, section merges, and draft bible sections to `debug/init_bible_cache_v3_5/` and `debug/init_bible_sections_v3_5/`. If something fails, users can inspect or reuse partial outputs instead of starting over.
 
@@ -64,13 +64,15 @@ python grok_handoff_cli.py --help
 
 ## GUI Usage
 
-Normal GUI flow:
+Main GUI flow (Story Folder Wizard):
 
-1. Select a `.mhtml` file.
-2. Select `project_dir`, for example `D:\Grok_Project`.
-3. Click `Clean current MHTML`.
-4. Click `Absorb existing run directory`.
-5. Open `handoff/03_下个窗口直接复制这个.md` and paste it into the next Grok window.
+1. Choose a story folder.
+2. Put saved Grok `.mhtml` files into that folder.
+3. Let the app scan the folder and show what it found.
+4. Choose one action: add a new Grok window, rebuild the story project, or regenerate the handoff pack.
+5. Copy `handoff/03_下个窗口直接复制这个.md` into the next Grok window.
+
+Advanced operations are still available for power users (`Clean one .mhtml only` and `Absorb one run only`), but they are no longer the primary workflow.
 
 Default LM Studio Base URL:
 
@@ -120,24 +122,26 @@ The script runs:
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
-```
+python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+``` 
 
 Recommended output:
 
 ```text
-dist\GrokStoryHandoff.exe
-```
+dist\GrokStoryHandoff\GrokStoryHandoff.exe
+``` 
 
-Default build now uses `--onefile` so the release has a single `GrokStoryHandoff.exe` and no sibling `_internal` folder in `dist` packaging. Use `-OneDir` only if you need easier path debugging.
+Default build uses `--onedir` so the release package keeps a stable folder layout and is easier to debug.
+
+`--onefile` is optional, but `--onedir` is recommended for debugging and release stability.
 
 The GUI exe uses an internal subprocess handoff (`--run-script v6/manager`) so the packaged app can still run the original core modules without requiring users to install Python.
 
-Optional onedir build:
+Optional onefile build:
 
 ```powershell
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
-```
+python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
+``` 
 
 ## GitHub Release
 
@@ -366,5 +370,12 @@ No local packaging is required:
 Issues, logs, bug reports, and feature suggestions are welcome:
 https://github.com/xiaoanran0602-pixel/grok-story-handoff/issues
 
+Before posting logs, screenshots, or bug reports, remove private story text, local paths, API keys, tokens, and personal data.
 
 Keywords: Grok, AI writing, long conversation cleanup, story canon, story bible, handoff pack, roleplay, worldbuilding, local AI, LM Studio, MHTML export.
+
+
+
+
+
+
