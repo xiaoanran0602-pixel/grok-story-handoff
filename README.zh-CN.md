@@ -77,3 +77,11 @@ dist\GrokStoryHandoff\GrokStoryHandoff.exe
 
 
 
+
+## 商业化与出售指南
+
+如果你希望把本项目进一步包装成可售卖产品（模板包 / 代跑服务 / 商业版），请先阅读：
+
+- [`docs/SELLING_PLAYBOOK_zh.md`](docs/SELLING_PLAYBOOK_zh.md)
+
+该文档包含 14 天执行清单、定价建议、渠道策略和可直接复用的销售文案。
