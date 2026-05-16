@@ -59,6 +59,14 @@ python grok_handoff_gui.py
 更多细节请看 `docs/USAGE_zh.md`。
 
 
+## 商业化（Lemon 自动化落地）
+
+如果你希望“除收款账户绑定外尽量全自动”地上架与收费，请阅读：
+
+- [`docs/LEMON_AUTOMATION_zh.md`](docs/LEMON_AUTOMATION_zh.md)
+
+该文档提供三档商品、文案模板、自动交付邮件、优惠策略与 7 天冷启动清单。
+
 ## 打包与发布口径
 
 默认推荐使用 `--onedir`：
