@@ -1,122 +1,71 @@
-# 发布流程
+# 发布检查清单
 
-本文档可能包含规划/内部细节；当前实际使用请优先参考 README 和 USAGE。
+发布 Windows 打包版或新版本前，用这个清单检查一遍。
 
-本文档只准备发布流程，不会创建真实 GitHub Release。
+## 1. 清理仓库
 
-## 1. 本地测试
+确认没有私人故事文件：
 
 ```powershell
-cd D:\Grok
-python grok_handoff_cli.py --help
-python grok_handoff_gui.py
+git status --short
 ```
 
-建议确认：
+不要提交或发布：
 
-- GUI 能启动。
-- 语言下拉框能切换。
-- 日志窗口能滚动。
-- 进度条在长任务时会转动。
-- CLI help 明确说明输入是 Grok 保存的 `.mhtml` 对话窗口。
+- `.mhtml`、`.mht`、`.html` 故事导出文件。
+- `runs/`、`master/`、`handoff/`、`debug/`、`mhtml_archive/`。
+- 包含私人故事文本的日志。
+- API key、token、本地私人路径、云端凭据。
 
-## 2. 打包 exe
+## 2. 构建 Windows 包
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
-脚本默认会执行：
-
-```powershell
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
-```
-
-推荐产物：
+预期输出：
 
 ```text
 dist\GrokStoryHandoff\GrokStoryHandoff.exe
 ```
 
-`--onefile` 可选，但为调试与发布稳定性，推荐 `--onedir`。
+默认推荐 `--onedir`，稳定性更好。
 
-可选 onefile 命令：
+## 3. 冒烟测试
 
-```powershell
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
-```
+上传前至少测试：
 
-## 3. 检查 dist
+- 软件可以打开。
+- 语言选择可用。
+- 可以选择故事目录。
+- 可以设置本地 API URL。
+- 一个安全的小型测试 `.mhtml` 可以跑完整流程。
+- 能生成 `handoff/03_下个窗口直接复制这个.md`。
 
-确认文件存在：
+## 4. 创建 Release
 
-```text
-dist\GrokStoryHandoff\GrokStoryHandoff.exe
-```
-
-运行 exe，确认 GUI 能启动。
-
-## 4. 压缩发布包
-
-把整个文件夹：
+版本标签建议清晰，例如：
 
 ```text
-dist\GrokStoryHandoff
+v0.1.7
 ```
 
-压缩为：
+资产文件名建议：
 
 ```text
-GrokStoryHandoff-windows-v0.1.0.zip
+GrokStoryHandoff-windows-v0.1.7.zip
 ```
 
-## 5. 创建 GitHub Release
+## 5. Release Notes 模板
 
-1. 打开 GitHub 仓库。
-2. 点击 `Releases`。
-3. 点击 `Draft a new release`。
-4. Tag: `v0.1.0`。
-5. Title: `Grok Story Handoff v0.1.0`。
-6. 上传 `GrokStoryHandoff-windows-v0.1.0.zip`。
-7. Release notes 可写：
+```md
+## Grok Story Handoff v0.1.7
 
-```text
-- First public preview
-- Tkinter GUI
-- CLI wrapper
-- Grok .mhtml canon extraction
-- Handoff pack generation
-- Toast workshop docs
+### Highlights
+- Windows GUI story-folder handoff workflow.
+- Local OpenAI-compatible model endpoint support.
+- Generates master story canon, story bible, recent context, and next-window handoff prompt.
+
+### Privacy reminder
+Do not upload private `.mhtml`, `master/`, `handoff/`, `runs/`, or `debug/` folders when reporting issues.
 ```
-
-## 6. 注意隐私
-
-发布前确认没有上传：
-
-- `.mhtml`
-- `runs/`
-- `master/`
-- `handoff/`
-- `debug/`
-- `story_canon.md`
-- `clean_corpus.md`
-- `removed_meta.md`
-- `canon_index.jsonl`
-- `grok_config.json`
-
-`.gitignore` 已排除这些内容，但发布前仍要人工检查 zip 和仓库文件。
-
-## 全自动发布
-以后不需要本地打包。流程是：
-1. Codex 修改代码并开 PR。
-2. 合并 PR 到 main。
-3. 打开 GitHub → Actions → Release Windows。
-4. 点击 Run workflow。
-5. 输入版本号，例如 v0.1.1。
-6. Actions 会自动打包 Windows exe、生成 zip、创建 Release、上传资产。
-
-## Windows Actions UTF-8
-Windows GitHub Actions 可能需要 UTF-8 模式，因为 CLI help 包含中文/日文文本。若出现 UnicodeEncodeError / cp1252，workflow 应设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`。
-

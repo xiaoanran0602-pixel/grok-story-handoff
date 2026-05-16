@@ -4,76 +4,73 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (for example v0.1.1)'
+        description: "Release version, for example v0.1.7"
         required: true
-        type: string
-  push:
-    tags:
-      - 'v*.*.*'
+        default: "v0.1.7"
 
 permissions:
   contents: write
 
 jobs:
-  build-release:
+  build:
     runs-on: windows-latest
-    env:
-      PYTHONUTF8: "1"
-      PYTHONIOENCODING: "utf-8"
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-      - name: Resolve version
-        id: version
-        shell: bash
+          python-version: "3.11"
+
+      - name: Check for private story files
+        shell: pwsh
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Ensure release does not already exist
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if gh release view "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "Release ${{ steps.version.outputs.version }} already exists. Please use a new version tag." >&2
+          $blockedExtensions = @("*.mhtml", "*.mht", "*.mhtm")
+          $blockedDirs = @("runs", "master", "handoff", "debug", "mhtml_archive")
+
+          $badFiles = @()
+          foreach ($pattern in $blockedExtensions) {
+            $badFiles += Get-ChildItem -Path . -Recurse -File -Filter $pattern -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notmatch "\\.git\\" }
+          }
+
+          foreach ($dir in $blockedDirs) {
+            $badFiles += Get-ChildItem -Path . -Recurse -Directory -Filter $dir -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notmatch "\\.git\\" }
+          }
+
+          if ($badFiles.Count -gt 0) {
+            Write-Host "Blocked private/generated files found:"
+            $badFiles | ForEach-Object { Write-Host $_.FullName }
             exit 1
-          fi
-      - name: Install dependencies
+          }
+
+      - name: Build Windows app
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pyinstaller
-      - name: Configure UTF-8 console
-        shell: powershell
+          powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
+
+      - name: Create release zip
+        shell: pwsh
         run: |
-          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-          $OutputEncoding = [System.Text.Encoding]::UTF8
-          chcp 65001
-      - name: Validate scripts
-        run: |
-          python -X utf8 -m py_compile grok_handoff_gui.py grok_handoff_cli.py grok_i18n.py
-          python -X utf8 grok_handoff_cli.py --help
-      - name: Build Windows GUI
-        run: python -X utf8 -m PyInstaller --onedir --windowed --name GrokStoryHandoff grok_handoff_gui.py
-      - name: Package artifact
-        shell: bash
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          ZIP_NAME="GrokStoryHandoff-windows-${VERSION}.zip"
-          powershell -NoProfile -Command "Compress-Archive -Path 'dist/GrokStoryHandoff/*' -DestinationPath $ZIP_NAME -Force"
-          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-        id: package
-      - name: Create release and upload asset
+          $version = "${{ github.event.inputs.version }}"
+          $zipName = "GrokStoryHandoff-windows-$version.zip"
+          Compress-Archive -Path "dist\GrokStoryHandoff\*" -DestinationPath $zipName -Force
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          generate_release_notes: true
-          body: AI-assisted local tool for cleaning long Grok conversations and generating story handoff packs.
-          files: ${{ steps.package.outputs.zip_name }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          tag_name: ${{ github.event.inputs.version }}
+          name: Grok Story Handoff ${{ github.event.inputs.version }}
+          files: ${{ env.ZIP_NAME }}
+          body: |
+            ## Grok Story Handoff ${{ github.event.inputs.version }}
+
+            Windows build for the Grok Story Handoff local story-folder workflow.
+
+            ### Privacy reminder
+            Do not upload private `.mhtml`, `master/`, `handoff/`, `runs/`, or `debug/` folders when reporting issues.

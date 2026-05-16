@@ -1,122 +1,71 @@
-# Release Workflow
+# Release Checklist
 
-This document may describe planned/internal details; for current usage, see README and USAGE.
+Use this checklist before publishing a Windows build or a new public release.
 
-This document only prepares the release workflow. It does not create a real GitHub Release.
+## 1. Clean the repository
 
-## 1. Local Test
+Check that no private story files are included:
 
 ```powershell
-cd D:\Grok
-python grok_handoff_cli.py --help
-python grok_handoff_gui.py
+git status --short
 ```
 
-Check that:
+Never release or commit:
 
-- The GUI starts.
-- The language dropdown works.
-- The log box scrolls.
-- The progress bar moves during long tasks.
-- CLI help clearly says the input is a Grok conversation saved as `.mhtml`.
+- `.mhtml`, `.mht`, `.html` story exports.
+- `runs/`, `master/`, `handoff/`, `debug/`, `mhtml_archive/`.
+- Logs that include private story text.
+- API keys, tokens, local private paths, or cloud credentials.
 
-## 2. Build the EXE
+## 2. Build Windows package
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
-The script runs (default):
-
-```powershell
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller
-python -m PyInstaller --onedir --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
-```
-
-Recommended output:
+Expected output:
 
 ```text
 dist\GrokStoryHandoff\GrokStoryHandoff.exe
 ```
 
-`--onefile` is optional, but `--onedir` is recommended for debugging and release stability.
+The default `--onedir` package is recommended for stability.
 
-Optional onefile build:
+## 3. Smoke test
 
-```powershell
-python -m PyInstaller --onefile --windowed --name GrokStoryHandoff --hidden-import grok_mhtml_bible_pipeline_v6 --hidden-import grok_story_handoff_manager_v3_5_checkpoint_bible grok_handoff_gui.py
-```
+Before uploading, test:
 
-## 3. Check dist
+- App opens.
+- Language selector works.
+- Story folder can be selected.
+- Local API URL can be set.
+- A small safe test `.mhtml` can run through the workflow.
+- `handoff/03_下个窗口直接复制这个.md` is generated.
 
-Confirm this file exists:
+## 4. Create release
 
-```text
-dist\GrokStoryHandoff\GrokStoryHandoff.exe
-```
-
-Run it and make sure the GUI opens.
-
-## 4. Zip the Release Package
-
-Zip the whole folder:
+Use a clear version tag, for example:
 
 ```text
-dist\GrokStoryHandoff
+v0.1.7
 ```
 
-Suggested zip name:
+Suggested asset name:
 
 ```text
-GrokStoryHandoff-windows-v0.1.0.zip
+GrokStoryHandoff-windows-v0.1.7.zip
 ```
 
-## 5. Create a GitHub Release
+## 5. Release notes template
 
-1. Open the GitHub repository.
-2. Click `Releases`.
-3. Click `Draft a new release`.
-4. Tag: `v0.1.0`.
-5. Title: `Grok Story Handoff v0.1.0`.
-6. Upload `GrokStoryHandoff-windows-v0.1.0.zip`.
-7. Suggested release notes:
+```md
+## Grok Story Handoff v0.1.7
 
-```text
-- First public preview
-- Tkinter GUI
-- CLI wrapper
-- Grok .mhtml canon extraction
-- Handoff pack generation
-- Toast workshop docs
+### Highlights
+- Windows GUI for story-folder handoff workflow.
+- Local OpenAI-compatible model endpoint support.
+- Generates master story canon, story bible, recent context, and next-window handoff prompt.
+
+### Privacy reminder
+Do not upload private `.mhtml`, `master/`, `handoff/`, `runs/`, or `debug/` folders when reporting issues.
 ```
-
-## 6. Privacy Check
-
-Before publishing, make sure you did not upload:
-
-- `.mhtml`
-- `runs/`
-- `master/`
-- `handoff/`
-- `debug/`
-- `story_canon.md`
-- `clean_corpus.md`
-- `removed_meta.md`
-- `canon_index.jsonl`
-- `grok_config.json`
-
-These are ignored by `.gitignore`, but always inspect the zip and repository before publishing.
-
-## Fully automated release
-No local packaging is required:
-1. Codex opens a PR.
-2. Merge PR into main.
-3. Open GitHub → Actions → Release Windows.
-4. Click Run workflow.
-5. Enter a version, for example v0.1.1.
-6. GitHub Actions builds the Windows executable, zips it, creates a Release, and uploads the asset.
-
-## Windows Actions UTF-8
-Windows GitHub Actions may need UTF-8 mode because CLI help contains Chinese/Japanese text. If UnicodeEncodeError / cp1252 appears, workflow should set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`.
-

@@ -1,31 +1,69 @@
+# Python
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
 .venv/
 venv/
-*.pyc
+env/
+ENV/
+
+# Build artifacts
 build/
 dist/
 *.spec
+*.egg-info/
 *.zip
+*.7z
+*.rar
+
+# Local config and secrets
+grok_config.json
+.env
+.env.*
+*.key
+*.pem
+*.token
+
+# User story inputs: never commit private Grok exports
 *.mhtml
 *.mht
 *.mhtm
 *.html
-*.jsonl
-*.log
-grok_config.json
+
+# Generated story project data: private by default
 runs/
 master/
 handoff/
 debug/
 mhtml_archive/
 *_Project*/
+*_project*/
 output*/
+user_data/
+local_data/
+
+# Generated story files
 story_canon.md
 clean_corpus.md
 removed_meta.md
 canon_index.jsonl
+*.jsonl
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.cache
 
-# Local editor/system files
+# Editor / OS
 .idea/
 .vscode/
 .DS_Store
