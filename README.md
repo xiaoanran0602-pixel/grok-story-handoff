@@ -1,17 +1,36 @@
 # Grok Story Handoff
 
-Grok Story Handoff is an AI-assisted local tool that turns saved Grok `.mhtml` windows into a long-term story project and a next-window handoff pack.
+**Turn full Grok long-chat windows into a clean next-window handoff pack for continuous fiction writing.**
 
-这是一个基于 AI 的 Grok 长对话清洗与续写交接工具。
+Grok Story Handoff is a local tool for long-form fiction workflows. Save a Grok chat as `.mhtml`, put it into one story folder, then generate:
 
-Input: Grok conversation saved as `.mhtml`  
-Output: cleaned story canon + story bible + next-window handoff pack
+- cleaned story canon
+- current story bible
+- recent context
+- next-window handoff prompt
 
-Download Windows Release: https://github.com/xiaoanran0602-pixel/grok-story-handoff/releases
+## 30-second workflow
+
+1. Save your full Grok chat as `.mhtml`
+2. Put it into one story folder
+3. Open Grok Story Handoff GUI
+4. Select the story folder and scan
+5. Click append new Grok window
+6. Copy `handoff/03_下个窗口直接复制这个.md` into the next Grok window
+
+## Download
+
+- Windows release: https://github.com/xiaoanran0602-pixel/grok-story-handoff/releases
+- Source code: this repository
+
+## Creator Pack
+
+Want a ready-to-run package + starter templates + beginner guide?
+
+- Commercial launch checklist: [`docs/CREATOR_PACK_GO_TO_MARKET_zh.md`](docs/CREATOR_PACK_GO_TO_MARKET_zh.md)
+- Store link placeholder: `TODO: add Gumroad / itch.io link`
 
 中文说明： [README.zh-CN.md](README.zh-CN.md)
-
-**English README.** 中文说明请看 [README.zh-CN.md](README.zh-CN.md).
 
 ## Project Overview
 

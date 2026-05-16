@@ -59,13 +59,13 @@ python grok_handoff_gui.py
 更多细节请看 `docs/USAGE_zh.md`。
 
 
-## 商业化（Lemon 自动化落地）
+## Creator Pack 上架
 
-如果你希望“除收款账户绑定外尽量全自动”地上架与收费，请阅读：
+如果你要把这个项目包装成“创作者可直接购买的成品包”，请看：
 
-- [`docs/LEMON_AUTOMATION_zh.md`](docs/LEMON_AUTOMATION_zh.md)
+- [`docs/CREATOR_PACK_GO_TO_MARKET_zh.md`](docs/CREATOR_PACK_GO_TO_MARKET_zh.md)
 
-该文档提供三档商品、文案模板、自动交付邮件、优惠策略与 7 天冷启动清单。
+这份清单覆盖定价、渠道、截图要求与 48 小时上架动作。
 
 ## 打包与发布口径
 
